@@ -26,6 +26,8 @@ final class MediaStore {
 
     func useSampleVideo() async {
         guard let url = Bundle.main.url(forResource: "noel-exemple", withExtension: "mp4") else { return }
+        isLoading = true
+        defer { isLoading = false }
         await loadVideo(url)
     }
 

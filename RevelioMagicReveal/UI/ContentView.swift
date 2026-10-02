@@ -24,15 +24,25 @@ struct ContentView: View {
                 RevealCardView(engine: engine, cover: model.media.cover, player: model.media.player) {
                     model.media.playFromStart()
                 }
-                    .padding(.horizontal, 30)
-                    .overlay(alignment: .top) {
-                        if model.settings.debugOverlay {
-                            DebugPanel(engine: engine, settings: model.settings)
-                                .padding(.top, -6)
-                                .padding(.horizontal, 20)
-                                .transition(.move(edge: .top).combined(with: .opacity))
+                .overlay {
+                    // Animation limitée au voile : elle ne doit pas toucher la carte (changement de couverture, reset).
+                    ZStack {
+                        if model.media.isLoading {
+                            LoadingVeil()
+                                .transition(.opacity)
                         }
                     }
+                    .animation(.smooth(duration: 0.25), value: model.media.isLoading)
+                }
+                .padding(.horizontal, 30)
+                .overlay(alignment: .top) {
+                    if model.settings.debugOverlay {
+                        DebugPanel(engine: engine, settings: model.settings)
+                            .padding(.top, -6)
+                            .padding(.horizontal, 20)
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                    }
+                }
 
                 Spacer(minLength: 12)
 
@@ -98,6 +108,7 @@ struct ContentView: View {
             }
             .buttonStyle(.glass)
             .buttonBorderShape(.circle)
+            .disabled(model.media.isLoading)
             .accessibilityLabel("Choisir une vidéo")
 
             Button {
@@ -147,6 +158,26 @@ struct ContentView: View {
             .buttonStyle(.glassProminent)
             .tint(engine.phase == .revealed ? Palette.gold : Palette.fir)
         }
+    }
+}
+
+/// Voile posé sur la carte pendant l'import d'une vidéo (copie, téléchargement iCloud, première image).
+private struct LoadingVeil: View {
+    var body: some View {
+        RoundedRectangle(cornerRadius: 16)
+            .fill(.black.opacity(0.5))
+            .overlay {
+                VStack(spacing: 12) {
+                    ProgressView()
+                        .controlSize(.large)
+                        .tint(Palette.cream)
+                    Text("Chargement de la vidéo…")
+                        .font(.callout.weight(.medium))
+                        .foregroundStyle(Palette.cream)
+                }
+            }
+            .contentShape(.rect)
+            .accessibilityElement(children: .combine)
     }
 }
 
