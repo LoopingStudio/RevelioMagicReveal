@@ -20,8 +20,10 @@ constant float2 kFrostReference = float2(360.0, 480.0);
 constant float kFrostThreshold = 0.5;
 /// Amplitude du bruit de bord, en unités de couverture.
 constant float kFrostNoiseAmp = 0.26;
-/// Part des cristaux dans le bord : le givre résiste un peu plus là où la glace est épaisse.
+/// Part des cristaux dans le bord : le bord s'effiloche le long des plumes.
 constant float kFrostFray = 0.22;
+/// Part de l'épaisseur : le givre épais (vers le cadre) résiste plus longtemps que le voile mince du centre.
+constant float kFrostThickness = 0.16;
 /// Pente typique du bruit de bord (par point) : évite une distance infinie là où la couverture est plate.
 constant float kFrostNoiseSlope = 0.014;
 
@@ -154,7 +156,7 @@ inline float frost_stars(float2 p, float cell, float key, float presence) {
     float star = frost_stars(p + warp * 4.0, 19.0, 53.0, mix(0.10, 0.04, border));
 
     float crystal = 1.0 - (1.0 - big * mix(0.45, 1.0, border))
-                        * (1.0 - mid * mix(0.26, 0.75, border))
+                        * (1.0 - mid * mix(0.2, 0.75, border))
                         * (1.0 - star * 0.25);
 
     // Grain : facettes de givre (sucre), chacune un peu plus ou moins claire.
@@ -198,7 +200,7 @@ inline FrostEdge frost_edge(float2 pos, float4 rect, device const float *field, 
     r.cov = c0;
     r.invSlope = rsqrt(gl * gl + kFrostNoiseSlope * kFrostNoiseSlope);
     r.dCov = (c0 - kFrostThreshold) * r.invSlope;
-    r.slack = (kFrostNoiseAmp * 0.5 + kFrostFray * 0.8) * r.invSlope;
+    r.slack = (kFrostNoiseAmp * 0.5 + kFrostFray * 0.8 + kFrostThickness * 0.5) * r.invSlope;
     r.normal = gl > 1e-5 ? g / gl : float2(0.0, -1.0);
     return r;
 }
@@ -214,9 +216,10 @@ inline float frost_edgeNoise(float2 pos, float wetness) {
     return (wave * 0.45 + facet * facetWeight + grain * 0.15) / (0.6 + facetWeight) ;
 }
 
-/// Distance signée au bord, en points (> 0 côté givre). `crystal` : valeur du motif au pixel.
-inline float frost_distance(FrostEdge e, float2 pos, float crystal, float wetness) {
-    float shift = kFrostNoiseAmp * (frost_edgeNoise(pos, wetness) - 0.5) + kFrostFray * (crystal - 0.3);
+/// Distance signée au bord, en points (> 0 côté givre). `crystal`, `density` : valeurs du motif au pixel.
+inline float frost_distance(FrostEdge e, float2 pos, float crystal, float density, float wetness) {
+    float shift = kFrostNoiseAmp * (frost_edgeNoise(pos, wetness) - 0.5) + kFrostFray * (crystal - 0.3)
+                + kFrostThickness * (density - 0.5);
     return e.dCov + shift * e.invSlope;
 }
 
@@ -241,10 +244,10 @@ inline float frost_glitter(float2 pos, float2 toLight, float time) {
     float la = atan2(toLight.y, toLight.x);
     float result = 0.0;
 
-    // Gros éclats : une cellule de 5 pt sur vingt porte une facette, avec une croix de diffraction.
+    // Gros éclats : une cellule de 5 pt sur quinze porte une facette, avec une croix de diffraction.
     float2 cell = floor(pos / 5.0);
     float h = rn_hash(cell + 0.37);
-    if (h > 0.95) {
+    if (h > 0.935) {
         float2 o = cell * 5.0 + 1.4 + rn_hash2(cell + 9.1) * 2.2;
         float2 r = pos - o;
         float facet = fract(h * 37.0) * 6.2832;
@@ -253,13 +256,13 @@ inline float frost_glitter(float2 pos, float2 toLight, float time) {
         float core = exp(-dot(r, r) * 2.2);
         float2 ar = abs(r);
         float arms = (exp(-ar.y * 7.0 - ar.x * 1.4) + exp(-ar.x * 7.0 - ar.y * 1.4)) * (1.0 - smoothstep(1.4, 2.4, length(r)));
-        result += lit * twinkle * (core * 1.4 + arms * 0.6);
+        result += lit * twinkle * (core * 1.7 + arms * 0.75);
     }
 
     // Grain scintillant : petits points qui s'allument quand on incline.
     float2 fine = floor(pos / 1.7);
     float hf = rn_hash(fine + 5.3);
-    if (hf > 0.90) {
+    if (hf > 0.88) {
         float2 r = pos - (fine + 0.5) * 1.7;
         float lit = pow(max(0.0, cos(hf * 91.0 - la * 4.0 - time * 0.5)), 24.0);
         result += lit * exp(-dot(r, r) * 5.0) * 0.45;
@@ -285,7 +288,7 @@ inline float frost_glitter(float2 pos, float2 toLight, float time) {
     float grain = float(motif.b);
 
     // Plein givre loin du bord : inutile d'évaluer le bruit.
-    float d = (e.dCov - e.slack > meltWidth + 2.0) ? 1000.0 : frost_distance(e, pos, crystal, wetness);
+    float d = (e.dCov - e.slack > meltWidth + 2.0) ? 1000.0 : frost_distance(e, pos, crystal, density, wetness);
     float alpha = smoothstep(-0.45, 0.45, d);
     if (alpha <= 0.0) return half4(0.0);
 
@@ -304,14 +307,14 @@ inline float frost_glitter(float2 pos, float2 toLight, float time) {
     float thin = smoothstep(0.5, 0.97, e.cov);
 
     // Voile laiteux : mince au centre (on devine les lumières), épais vers le cadre.
-    float veil = mix(0.40, 0.93, density) * mix(0.5, 1.0, thin) * (1.0 - wet * 0.55);
+    float veil = mix(0.46, 0.93, density) * mix(0.5, 1.0, thin) * (1.0 - wet * 0.55);
     float3 milk = float3(0.90, 0.935, 0.975);
     float3 col = mix(photo, milk, saturate(veil));
     // La lumière diffusée éclaircit un peu ce qu'on voit à travers.
     col = 1.0 - (1.0 - col) * (1.0 - 0.06 * (1.0 - veil));
 
     // Facettes du givre (sucre) : légère variation de clarté.
-    col *= 1.0 + (grain - 0.5) * 0.10 * density;
+    col *= 1.0 + (grain - 0.5) * 0.07 * density;
 
     // Cristaux en relief, éclairés selon l'inclinaison du téléphone.
     float2 px = 0.7 / rect.zw;
@@ -351,8 +354,8 @@ inline float frost_glitter(float2 pos, float2 toLight, float time) {
     if (e.dCov - e.slack > 0.6) return half4(0.0);
     if (e.dCov + e.slack < -(filmWidth + 1.0)) return half4(half(frost_sheen(pos, rect, gravity)));
 
-    float crystal = float(crystals.sample(frostSampler, frost_uv(pos, rect)).r);
-    float d = frost_distance(e, pos, crystal, wetness);
+    half4 motif = crystals.sample(frostSampler, frost_uv(pos, rect));
+    float d = frost_distance(e, pos, float(motif.r), float(motif.g), wetness);
     float coverage = 1.0 - smoothstep(-0.45, 0.45, d);
     if (coverage <= 0.0) return half4(0.0);
     float2 toward = e.normal;
