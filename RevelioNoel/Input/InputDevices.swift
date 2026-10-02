@@ -4,22 +4,45 @@ import Foundation
 import UIKit
 
 /// Niveau du micro en dBFS, livré sur le main actor avec la durée du tampon.
-final class MicrophoneMonitor {
+///
+/// L'activation de la session et le démarrage du moteur audio peuvent bloquer plusieurs secondes
+/// (serveur audio lent ou occupé) : tout ce qui touche à l'audio passe par une file série dédiée,
+/// jamais par le fil principal.
+nonisolated final class MicrophoneMonitor: @unchecked Sendable {
     enum Failure: Error { case noInput }
 
+    /// Seule file qui touche `audioEngine` et `isRunning`.
+    private let queue = DispatchQueue(label: "RevelioNoel.microphone", qos: .userInitiated)
     private let audioEngine = AVAudioEngine()
-    private(set) var isRunning = false
-    var onLevel: ((_ decibels: Float, _ dt: Float) -> Void)?
+    private var isRunning = false
+    private let onLevel: @MainActor @Sendable (_ decibels: Float, _ dt: Float) -> Void
+
+    init(onLevel: @escaping @MainActor @Sendable (_ decibels: Float, _ dt: Float) -> Void) {
+        self.onLevel = onLevel
+    }
 
     static func requestPermission() async -> Bool {
         await AVAudioApplication.requestRecordPermission()
     }
 
-    static var permissionDenied: Bool {
-        AVAudioApplication.shared.recordPermission == .denied
+    func start() async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            queue.async {
+                do {
+                    try self.startOnQueue()
+                    continuation.resume()
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
     }
 
-    func start() throws {
+    func stop() {
+        queue.async { self.stopOnQueue() }
+    }
+
+    private func startOnQueue() throws {
         guard !isRunning else { return }
         let session = AVAudioSession.sharedInstance()
         try session.setCategory(.playAndRecord, mode: .measurement, options: [.mixWithOthers, .defaultToSpeaker])
@@ -27,8 +50,9 @@ final class MicrophoneMonitor {
         let input = audioEngine.inputNode
         let format = input.outputFormat(forBus: 0)
         guard format.sampleRate > 0, format.channelCount > 0 else { throw Failure.noInput }
-        let deliver: @Sendable (Float, Float) -> Void = { [weak self] db, dt in
-            Task { @MainActor in self?.onLevel?(db, dt) }
+        let onLevel = self.onLevel
+        let deliver: @Sendable (Float, Float) -> Void = { db, dt in
+            Task { @MainActor in onLevel(db, dt) }
         }
         input.installTap(onBus: 0, bufferSize: 1024, format: format, block: Self.makeTap(sampleRate: format.sampleRate, deliver: deliver))
         do {
@@ -40,15 +64,15 @@ final class MicrophoneMonitor {
         isRunning = true
     }
 
-    func stop() {
+    private func stopOnQueue() {
         guard isRunning else { return }
         audioEngine.inputNode.removeTap(onBus: 0)
         audioEngine.stop()
         isRunning = false
     }
 
-    /// Le tap tourne sur le thread audio : il ne doit pas hériter de l'isolation main actor.
-    nonisolated private static func makeTap(sampleRate: Double, deliver: @escaping @Sendable (Float, Float) -> Void) -> AVAudioNodeTapBlock {
+    /// Le tap tourne sur le thread audio : il ne doit pas hériter d'une isolation d'acteur.
+    private static func makeTap(sampleRate: Double, deliver: @escaping @Sendable (Float, Float) -> Void) -> AVAudioNodeTapBlock {
         { buffer, _ in
             guard let channel = buffer.floatChannelData?[0] else { return }
             let frames = Int(buffer.frameLength)

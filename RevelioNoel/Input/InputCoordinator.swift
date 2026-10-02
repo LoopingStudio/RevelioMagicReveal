@@ -12,7 +12,7 @@ final class InputCoordinator {
 
     @ObservationIgnored private let engine: RevealEngine
     @ObservationIgnored private let settings: RevealSettings
-    @ObservationIgnored private let mic = MicrophoneMonitor()
+    @ObservationIgnored private let mic: MicrophoneMonitor
     @ObservationIgnored private let motion = MotionMonitor()
     @ObservationIgnored private var shakeAnalyzer: ShakeAnalyzer
     @ObservationIgnored private var lastMotionTimestamp: TimeInterval?
@@ -22,8 +22,8 @@ final class InputCoordinator {
         self.engine = engine
         self.settings = settings
         shakeAnalyzer = ShakeAnalyzer(thresholdG: Float(settings.shakeThresholdG))
-        mic.onLevel = { [weak self] db, dt in
-            self?.engine.microphoneLevel(db, dt: dt)
+        mic = MicrophoneMonitor { [weak engine] db, dt in
+            engine?.microphoneLevel(db, dt: dt)
         }
     }
 
@@ -54,7 +54,13 @@ final class InputCoordinator {
             return
         }
         do {
-            try mic.start()
+            try await mic.start()
+            // Le geste a pu changer pendant le démarrage du micro.
+            guard engine.gesture == .blow else {
+                mic.stop()
+                microphone = .off
+                return
+            }
             microphone = .listening
         } catch {
             microphone = .unavailable
