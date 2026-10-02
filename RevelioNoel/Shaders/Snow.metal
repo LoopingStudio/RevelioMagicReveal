@@ -3,8 +3,10 @@
 /// Bord bruité de la neige : la couverture plus un bruit, comparés à un seuil.
 inline float snow_level(float2 pos, float4 rect, device const float *field, int count, float2 size) {
     float cov = rn_coverageAt(pos, rect, field, count, size);
-    float edge = rn_fbm(pos * 0.055, 3) - 0.5;
-    return cov + edge * 0.42;
+    float edge = rn_fbm(pos * 0.05, 3) - 0.5;
+    // Miettes : un bruit fin qui casse la régularité du bord.
+    float crumbs = rn_noise(pos * 0.38) - 0.5;
+    return cov + edge * 0.40 + crumbs * 0.12;
 }
 
 /// Neige accumulée : bosses éclairées, bord épais bleuté, paillettes, ombre portée sur la photo.
@@ -44,11 +46,16 @@ inline float snow_level(float2 pos, float4 rect, device const float *field, int 
     float crest = smoothstep(0.40, 0.46, t) * (1.0 - smoothstep(0.46, 0.55, t));
     col += crest * 0.12;
 
-    // Paillettes qui scintillent, surtout là où la neige est épaisse.
-    float2 cell = floor(pos / 3.0);
+    // Paillettes : petites étoiles à quatre branches qui scintillent là où la neige est épaisse.
+    float2 g = pos / 7.0;
+    float2 cell = floor(g);
     float hs = rn_hash(cell);
-    float sparkle = step(0.986, hs) * pow(max(0.0, sin(time * 2.6 + hs * 90.0)), 18.0);
-    col += sparkle * thickness * 0.9;
+    float2 d = fract(g) - 0.5 - (rn_hash2(cell + 5.3) - 0.5) * 0.5;
+    float core = max(0.0, 1.0 - length(d) * 7.0);
+    float cross = max(0.0, 1.0 - abs(d.x) * 26.0) * max(0.0, 1.0 - abs(d.y) * 4.0)
+                + max(0.0, 1.0 - abs(d.y) * 26.0) * max(0.0, 1.0 - abs(d.x) * 4.0);
+    float twinkle = step(0.965, hs) * pow(max(0.0, sin(time * 2.2 + hs * 70.0)), 10.0);
+    col += (core * core + cross * 0.6) * twinkle * thickness * 1.2;
 
     float a = alpha + shadow * (1.0 - alpha);
     return half4(half3(col * alpha), half(a));
