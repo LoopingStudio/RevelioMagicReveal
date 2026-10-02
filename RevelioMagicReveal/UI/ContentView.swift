@@ -91,14 +91,14 @@ struct ContentView: View {
                     .foregroundStyle(Palette.cream.opacity(0.6))
             }
             Spacer()
-            PhotosPicker(selection: $pickerItem, matching: .any(of: [.images, .videos]), photoLibrary: .shared()) {
-                Image(systemName: "photo.on.rectangle")
+            PhotosPicker(selection: $pickerItem, matching: .videos, photoLibrary: .shared()) {
+                Image(systemName: "film")
                     .font(.system(size: 17, weight: .semibold))
                     .frame(width: 44, height: 44)
             }
             .buttonStyle(.glass)
             .buttonBorderShape(.circle)
-            .accessibilityLabel("Choisir une photo ou une vidéo")
+            .accessibilityLabel("Choisir une vidéo")
 
             Button {
                 showsSettings = true
