@@ -110,11 +110,13 @@ struct PaperSheet: Sendable {
 
         for i in pieces.indices where attached[i] {
             if releaseTimers[i] >= 0 {
+                // Morceau programmé par la vague d'auto-fin : seul son minuteur décide, sinon la
+                // dissolution de la carte l'arracherait en même temps que tous les autres.
                 releaseTimers[i] -= dt
                 if releaseTimers[i] < 0 {
                     scraps += detach(i, launch: .finish, cardSize: cardSize, rng: &rng)
-                    continue
                 }
+                continue
             }
             let mean = meanCoverage(of: i, in: field)
             if mean < Self.detachThreshold {

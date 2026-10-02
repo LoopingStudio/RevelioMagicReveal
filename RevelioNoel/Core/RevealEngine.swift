@@ -101,7 +101,9 @@ final class RevealEngine {
         field.reset()
         blowMap = .blowFront(cols: field.cols, rows: field.rows, aspect: field.aspect, seed: seed)
         shakeMap = .shakeChunks(cols: field.cols, rows: field.rows, aspect: field.aspect, seed: seed)
-        paper = PaperSheet(aspect: field.aspect, seed: seed)
+        // La découpe du papier coûte cher : on ne la refait que si ce masque est affiché
+        // (passer au papier déclenche un reset, donc une découpe neuve).
+        if mask == .paper { paper = PaperSheet(aspect: field.aspect, seed: seed) }
         blowProgress = 0
         shakeProgress = 0
         shakeTarget = 0

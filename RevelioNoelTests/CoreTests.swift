@@ -225,6 +225,27 @@ struct RevealEngineTests {
         #expect(engine.phase == .covered)
     }
 
+    @Test func paperAutoFinishTearsFromTheCenterOutward() {
+        let engine = makeEngine()
+        engine.mask = .paper
+        engine.revealAll()
+        // 0,2 s après le début de la fin : la vague (0,3 s) n'a pas encore atteint les bords,
+        // même si la carte, elle, se dissout bien plus vite.
+        for _ in 0..<12 { engine.tick(dt: 1.0 / 60) }
+        let sheet = engine.paper
+        let center = SIMD2<Float>(0.5, 0.5 / sheet.aspect)
+        let distances = sheet.pieces.map { simd_distance($0.centroid, center) }
+        let attached = sheet.pieces.indices.filter { sheet.attached[$0] }
+        let detached = sheet.pieces.indices.filter { !sheet.attached[$0] }
+        #expect(!attached.isEmpty)
+        #expect(!detached.isEmpty)
+        let meanAttached = attached.map { distances[$0] }.reduce(0, +) / Float(attached.count)
+        let meanDetached = detached.map { distances[$0] }.reduce(0, +) / Float(detached.count)
+        #expect(meanAttached > meanDetached)
+        for _ in 0..<30 { engine.tick(dt: 1.0 / 60) }
+        #expect(engine.paper.attachedCount == 0)
+    }
+
     @Test func frameRateDropsWhenNothingMoves() {
         let engine = makeEngine()
         engine.tick(dt: 1.0 / 60)

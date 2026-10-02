@@ -10,8 +10,11 @@ struct RevealCardView: View {
             .padding(11)
             .background(Palette.paper, in: .rect(cornerRadius: 16))
             .shadow(color: .black.opacity(0.45), radius: 26, y: 16)
-            .shadow(color: Palette.gold.opacity(engine.phase == .revealed ? 0.45 : 0), radius: 40)
-            .animation(.smooth(duration: 0.8), value: engine.phase)
+            // L'animation ne porte que sur la lueur : appliquée à toute la carte, elle ferait fondre
+            // les couches insérées ou retirées au même moment (morceaux de papier, particules).
+            .animation(.smooth(duration: 0.8)) { content in
+                content.shadow(color: Palette.gold.opacity(engine.phase == .revealed ? 0.45 : 0), radius: 40)
+            }
     }
 
     private var photoArea: some View {

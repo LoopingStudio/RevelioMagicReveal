@@ -12,9 +12,13 @@ struct PaperMaskView: View {
         let _ = engine.frame
         let sheet = engine.paper
         // Le Canvas ne se redessine que si un morceau tombe ou se soulève : la vue est équatable.
-        AttachedPaperCanvas(sheet: sheet, looseLevels: sheet.looseness.map(PaperRender.looseLevel), scale: displayScale)
+        AttachedPaperCanvas(sheet: sheet, looseLevels: PaperRender.visibleLooseLevels(sheet), scale: displayScale)
             .equatable()
             .allowsHitTesting(false)
+            .onAppear {
+                // Le verso n'est utile qu'à la première chute : on le prépare avant, pour ne pas perdre d'image.
+                _ = PaperArtwork.verso(size: engine.cardSize, scale: displayScale)
+            }
     }
 }
 
@@ -28,14 +32,15 @@ struct PaperFallingLayer: View {
         let sheet = engine.paper
         let cardSize = engine.cardSize
         let scale = displayScale
-        if !sheet.falling.isEmpty, cardSize.width > 1 {
-            Canvas(rendersAsynchronously: false) { context, _ in
-                let margin = RevealEngine.particleMargin
-                context.translateBy(x: margin, y: margin)
-                PaperRender.drawFalling(sheet, cardSize: cardSize, scale: scale, in: &context)
-            }
-            .allowsHitTesting(false)
+        // Le Canvas reste toujours dans l'arbre : l'insérer ou le retirer en même temps qu'un changement
+        // de phase lui ferait prendre la transition animée de la carte (fondu parasite).
+        Canvas(rendersAsynchronously: false) { context, _ in
+            guard !sheet.falling.isEmpty, cardSize.width > 1 else { return }
+            let margin = RevealEngine.particleMargin
+            context.translateBy(x: margin, y: margin)
+            PaperRender.drawFalling(sheet, cardSize: cardSize, scale: scale, in: &context)
         }
+        .allowsHitTesting(false)
     }
 }
 
@@ -70,6 +75,17 @@ enum PaperRender {
 
     static func looseLevel(_ looseness: Float) -> UInt8 {
         UInt8(min(looseSteps, (looseness * looseSteps).rounded(.down)))
+    }
+
+    /// Niveaux de soulèvement réellement dessinés (bord libre et niveau ≥ 6), 0 sinon : la feuille
+    /// attachée, équatable, ne se redessine pas pour des variations invisibles.
+    static func visibleLooseLevels(_ sheet: PaperSheet) -> [UInt8] {
+        sheet.pieces.indices.map { i in
+            guard sheet.attached[i] else { return 0 }
+            let level = looseLevel(sheet.looseness[i])
+            guard level >= 6, sheet.pieces[i].edges.contains(where: { !sheet.attached[$0.neighbor] }) else { return 0 }
+            return level
+        }
     }
 
     /// Feuille encore en place, en une seule passe : la feuille reste continue, sans couture entre voisins.
@@ -119,41 +135,46 @@ enum PaperRender {
         let verso = context.resolve(Image(uiImage: PaperArtwork.verso(size: cardSize, scale: scale)))
         // Lumière venant du haut à gauche, un peu de face.
         let light = simd_normalize(SIMD3<Float>(-0.35, -0.55, 0.76))
-        // À l'auto-fin, jusqu'à ~50 morceaux tombent ensemble : on réduit le flou des ombres, son coût croît avec le rayon.
-        let blurScale: CGFloat = sheet.falling.count > 14 ? 0.45 : 1
-
-        for body in sheet.falling {
-            let i = body.piece
-            let c = paths.centroids[i]
+        func transform(of body: FallingPaper) -> CGAffineTransform {
+            let c = paths.centroids[body.piece]
             let lift = CGFloat(body.lift)
             let cosFlip = cos(body.flip)
             let squash = CGFloat(cosFlip < 0 ? min(-0.03, cosFlip) : max(0.03, cosFlip))
             let grow = 1 + 0.05 * lift
-
             var transform = CGAffineTransform(translationX: CGFloat(body.position.x), y: CGFloat(body.position.y))
             transform = transform.rotated(by: CGFloat(body.flipAxis))
             transform = transform.scaledBy(x: 1, y: squash)
             transform = transform.rotated(by: CGFloat(body.rotation - body.flipAxis))
             transform = transform.scaledBy(x: grow, y: grow)
-            transform = transform.translatedBy(x: -c.x, y: -c.y)
+            return transform.translatedBy(x: -c.x, y: -c.y)
+        }
+
+        // Ombres douces, d'autant plus décalées que le morceau s'est élevé : une seule passe floutée
+        // pour tous les morceaux (à l'auto-fin, jusqu'à ~50 tombent ensemble).
+        context.drawLayer { layer in
+            layer.addFilter(.blur(radius: sheet.falling.count > 14 ? 2.5 : 4))
+            for body in sheet.falling {
+                let lift = CGFloat(body.lift)
+                var shadow = layer
+                shadow.translateBy(x: 2 + 5 * lift, y: 4 + 11 * lift)
+                shadow.concatenate(transform(of: body))
+                shadow.fill(paths.fallingShapes[body.piece], with: .color(.black.opacity(Double(0.34 - 0.1 * lift))))
+            }
+        }
+
+        for body in sheet.falling {
+            let i = body.piece
+            let cosFlip = cos(body.flip)
             let shape = paths.fallingShapes[i]
 
-            // Ombre douce, d'autant plus décalée que le morceau s'est élevé.
-            var shadow = context
-            shadow.translateBy(x: 2 + 5 * lift, y: 4 + 11 * lift)
-            shadow.addFilter(.blur(radius: (1.5 + 5 * lift) * blurScale))
-            shadow.fill(shape.applying(transform), with: .color(.black.opacity(Double(0.34 - 0.1 * lift))))
-
             var piece = context
-            piece.concatenate(transform)
+            piece.concatenate(transform(of: body))
             var surface = piece
             surface.clip(to: shape)
             surface.draw(cosFlip >= 0 ? recto : verso, in: rect)
 
             if cosFlip >= 0 {
-                var tears = TearStrokes()
-                tears.add(piece: i, sheet: sheet, paths: paths, onlyFacingDetached: false)
-                tears.draw(in: &piece)
+                TearStrokes(paths.fallingTears[i]).draw(in: &piece)
             } else {
                 piece.stroke(shape, with: .color(.black.opacity(0.12)), lineWidth: 0.6)
             }
@@ -178,6 +199,14 @@ private struct TearStrokes {
     var bands = Path()
     var inkLines = Path()
     var fibers = Path()
+
+    init() {}
+
+    init(_ combined: PaperTearPaths) {
+        bands = combined.band
+        inkLines = combined.inkLine
+        fibers = combined.fibers
+    }
 
     mutating func add(piece i: Int, sheet: PaperSheet, paths: PaperPaths, onlyFacingDetached: Bool) {
         for (k, edge) in sheet.pieces[i].edges.enumerated() where !onlyFacingDetached || !sheet.attached[edge.neighbor] {
@@ -211,6 +240,8 @@ struct PaperPaths {
     var tears: [[PaperTearPaths]]
     /// Contours des morceaux qui tombent : ceux des coins sont rognés par l'arrondi de la carte.
     var fallingShapes: [Path]
+    /// Toutes les déchirures d'un morceau réunies : constantes pendant sa chute.
+    var fallingTears: [PaperTearPaths]
 }
 
 /// Chemins des morceaux en points, calculés une fois par feuille et par taille de carte.
@@ -240,6 +271,7 @@ enum PaperPathCache {
         var centroids: [CGPoint] = []
         var tears: [[PaperTearPaths]] = []
         var fallingShapes: [Path] = []
+        var fallingTears: [PaperTearPaths] = []
         let cornerZone = PaperRender.cornerRadius + 1
         let roundedCard = Path(roundedRect: CGRect(origin: .zero, size: size), cornerRadius: PaperRender.cornerRadius)
 
@@ -255,9 +287,18 @@ enum PaperPathCache {
             fallingShapes.append(inCorner ? outline.intersection(roundedCard) : outline)
 
             var rng = SeededRandom(seed: sheet.seed &* 977 &+ UInt32(i) &* 131)
-            tears.append(piece.edges.map { edge in tearPaths(edge, pt: pt, rng: &rng) })
+            let pieceTears = piece.edges.map { edge in tearPaths(edge, pt: pt, rng: &rng) }
+            tears.append(pieceTears)
+            var combined = PaperTearPaths(band: Path(), inkLine: Path(), fibers: Path())
+            for tear in pieceTears {
+                combined.band.addPath(tear.band)
+                combined.inkLine.addPath(tear.inkLine)
+                combined.fibers.addPath(tear.fibers)
+            }
+            fallingTears.append(combined)
         }
-        return PaperPaths(outlines: outlines, centroids: centroids, tears: tears, fallingShapes: fallingShapes)
+        return PaperPaths(outlines: outlines, centroids: centroids, tears: tears, fallingShapes: fallingShapes,
+                          fallingTears: fallingTears)
     }
 
     /// Bande blanche de largeur irrégulière vers l'intérieur du morceau, et fibres vers l'extérieur.
