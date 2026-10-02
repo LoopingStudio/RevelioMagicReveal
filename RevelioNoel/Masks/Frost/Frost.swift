@@ -1,31 +1,24 @@
+import CoreGraphics
 import SwiftUI
 import simd
 
-/// Givre sur une vitre. PROVISOIRE : aplat bleuté, à remplacer par le vrai rendu.
+/// Givre sur une vitre : photo floutée sous un voile laiteux et des plumes de glace ;
+/// la zone dégagée garde un bord humide qui réfracte la photo nette.
 struct FrostMaskView: View {
     let engine: RevealEngine
     let photo: Image
 
     var body: some View {
         let _ = engine.frame
-        Rectangle()
-            .fill(.white)
-            .colorEffect(ShaderLibrary.rnPlaceholder(
-                .boundingRect,
-                engine.fieldArgument,
-                engine.fieldSizeArgument,
-                .color(Color(red: 0.85, green: 0.93, blue: 1.0).opacity(0.92))
-            ))
-            .allowsHitTesting(false)
+        FrostGlass(
+            photo: photo,
+            crystals: FrostCrystalMap.image,
+            field: engine.fieldArgument,
+            fieldSize: engine.fieldSizeArgument,
+            time: engine.time,
+            gravity: engine.gravity,
+            wetness: FrostLook.wetness(for: engine.gesture)
+        )
+        .allowsHitTesting(false)
     }
-}
-
-enum FrostRecipe: ParticleRecipe {
-    static func particles(for event: ErosionEvent, rng: inout SeededRandom) -> [Particle] {
-        []
-    }
-}
-
-enum FrostArt {
-    static func draw(_ p: Particle, in context: inout GraphicsContext) {}
 }
