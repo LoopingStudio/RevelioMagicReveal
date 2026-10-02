@@ -132,6 +132,7 @@ struct ContentView: View {
     private var hint: String {
         guard engine.gesture == .blow else { return engine.gesture.hint }
         switch model.settings.mic {
+        case .both: return "Souffle vers l'iPhone, en haut ou en bas"
         case .auto, .bottom: return engine.gesture.hint
         case .front: return "Souffle vers le haut de l'écran"
         case .back: return "Souffle au dos, près de l'appareil photo"

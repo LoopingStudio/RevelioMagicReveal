@@ -13,16 +13,18 @@ private enum Signal {
         return (0..<count).map { _ in Float.random(in: -1...1, using: &rng) * amplitude }
     }
 
-    /// Bruit de vent : bruit blanc fortement filtré passe-bas (~150 Hz), comme l'air sur la membrane.
+    /// Bruit de vent : bruit blanc filtré par deux passe-bas en cascade (170 Hz, −12 dB/octave), comme
+    /// l'air sur la membrane. Calé sur les prises réelles : harmonicité ~0,3-0,5, centre ~110-130 Hz,
+    /// graves ~95 % (plus de filtrage rend le bruit presque périodique, donc « harmonique »).
     static func wind(amplitude: Float, count: Int = frame, seed: UInt32 = 2) -> [Float] {
-        let noise = whiteNoise(amplitude: 1, count: count + 2000, seed: seed)
-        let a = exp(-2 * Float.pi * 150 / sampleRate)
-        var y: Float = 0
-        var out: [Float] = []
-        out.reserveCapacity(noise.count)
-        for x in noise {
-            y = a * y + (1 - a) * x
-            out.append(y)
+        var out = whiteNoise(amplitude: 1, count: count + 4000, seed: seed)
+        let a = exp(-2 * Float.pi * 170 / sampleRate)
+        for _ in 0..<2 {
+            var y: Float = 0
+            for i in out.indices {
+                y = a * y + (1 - a) * out[i]
+                out[i] = y
+            }
         }
         let tail = Array(out.suffix(count))
         let peak = tail.map(abs).max() ?? 1
@@ -76,8 +78,9 @@ struct BlowFeatureTests {
     @Test func windIsNotHarmonicButFullOfLows() {
         let f = Signal.features(Signal.wind(amplitude: 0.6))
         #expect(f.harmonicity < 0.5, "harmonicité \(f.harmonicity)")
-        #expect(f.lowRatio > 0.5, "graves \(f.lowRatio)")
-        #expect(f.highRatio < 0.1)
+        #expect(f.lowRatio > 0.75, "graves \(f.lowRatio)")
+        #expect(f.centroidHz < 200, "centre \(f.centroidHz)")
+        #expect(f.highRatio < 0.05)
     }
 
     @Test func whiteNoiseIsFlatAndNotHarmonic() {
@@ -122,9 +125,24 @@ struct BlowClassifierTests {
         // Un troisième (~130 ms) : souffle soutenu.
         let third = gate.process(blow, thresholdDB: -30, dt: dt)
         #expect(third)
-        // Quatre blocs de voix (~170 ms) referment la porte.
-        for _ in 0..<4 { _ = gate.process(voice, thresholdDB: -30, dt: dt) }
+        // Une pointe isolée pendant le souffle ne referme pas la porte…
+        _ = gate.process(voice, thresholdDB: -30, dt: dt)
+        #expect(gate.isOpen)
+        // … mais cinq blocs de voix (~210 ms) la referment.
+        for _ in 0..<5 { _ = gate.process(voice, thresholdDB: -30, dt: dt) }
         #expect(!gate.isOpen)
+    }
+
+    @Test func scatteredBlowLikeBlocksDoNotAddUp() {
+        // Cas réel (prise « voix » du 2026-10-02) : fins de mots graves dispersées entre des syllabes.
+        var gate = BlowGate()
+        let blow = Signal.features(Signal.wind(amplitude: 0.6))
+        let voice = Signal.features(Signal.vowel(f0: 150, amplitude: 0.6))
+        let dt = Float(Signal.frame) / Signal.sampleRate
+        for frame in [blow, blow, voice, voice, voice, blow, voice, blow, blow, voice] {
+            _ = gate.process(frame, thresholdDB: -30, dt: dt)
+            #expect(!gate.isOpen)
+        }
     }
 }
 
@@ -189,8 +207,103 @@ struct BlowRecorderTests {
         #expect(file.length == AVAudioFramePosition(5 * Signal.frame))
         let csv = try String(contentsOf: wav.deletingPathExtension().appendingPathExtension("csv"), encoding: .utf8)
         let lines = csv.split(separator: "\n")
-        #expect(lines.count == 3 + 5)
-        #expect(lines[2].hasPrefix("t,levelDB,flatness"))
+        #expect(lines.count == 5 + 5)
+        #expect(lines[4].hasPrefix("t,levelDB,flatness"))
         #expect(wav.lastPathComponent.hasPrefix("autre_"))
+    }
+}
+
+/// Prises réelles (iPhone, micro du bas, 2026-10-02) : seules les mesures sont gardées, pas l'audio.
+/// `voix-2` contient des fins de mots graves qui ouvraient la porte avant l'hystérésis.
+private final class FixtureToken {}
+
+struct RecordedTakesTests {
+    private func openTime(_ name: String) throws -> Float {
+        let url = try #require(Bundle(for: FixtureToken.self).url(forResource: name, withExtension: "csv"))
+        let lines = try String(contentsOf: url, encoding: .utf8)
+            .split(separator: "\n")
+            .filter { !$0.hasPrefix("#") }
+        let header = lines[0].split(separator: ",").map(String.init)
+        var gate = BlowGate()
+        var open: Float = 0
+        let dt: Float = 2048.0 / 48_000
+        for line in lines.dropFirst() {
+            let values = Dictionary(uniqueKeysWithValues: zip(header, line.split(separator: ",").map { Float($0) ?? 0 }))
+            var f = BlowFeatures()
+            f.levelDB = values["levelDB"]!
+            f.flatness = values["flatness"]!
+            f.harmonicity = values["harmonicity"]!
+            f.lowRatio = values["lowRatio"]!
+            f.highRatio = values["highRatio"]!
+            f.centroidHz = values["centroidHz"]!
+            if gate.process(f, thresholdDB: -45, dt: dt) { open += dt }
+        }
+        return open
+    }
+
+    @Test(arguments: ["souffle-1", "souffle-2", "souffle-3"])
+    func realBlowsAreRecognized(_ take: String) throws {
+        // Chaque prise contient ~2 s de souffle effectif.
+        #expect(try openTime(take) > 1.5)
+    }
+
+    @Test(arguments: ["voix-1", "voix-2", "autre-1", "autre-2"])
+    func realVoiceAndNoiseAreIgnored(_ take: String) throws {
+        #expect(try openTime(take) == 0)
+    }
+}
+
+struct StereoBlowTests {
+    let wind = Signal.features(Signal.wind(amplitude: 0.6))
+    let voice = Signal.features(Signal.vowel(f0: 120, amplitude: 0.6))
+    let quietVoice = Signal.features(Signal.vowel(f0: 120, amplitude: 0.05))
+
+    @Test func chooserFollowsTheChannelThatBlows() {
+        // On souffle vers le haut pendant que le micro du bas entend surtout la voix.
+        #expect(BlowChannelChooser.choose([voice, wind], classifier: BlowClassifier(), thresholdDB: -48) == 1)
+        #expect(BlowChannelChooser.choose([wind, voice], classifier: BlowClassifier(), thresholdDB: -48) == 0)
+    }
+
+    @Test func withoutABlowTheLouderChannelIsShown() {
+        #expect(BlowChannelChooser.choose([quietVoice, voice], classifier: BlowClassifier(), thresholdDB: -48) == 1)
+    }
+
+    @MainActor
+    @Test func engineRevealsWhenEitherMicrophoneHearsABlow() {
+        let settings = RevealSettings(defaults: UserDefaults(suiteName: "StereoBlowTests-\(UUID().uuidString)")!)
+        settings.autoFinishThreshold = 1
+        let engine = RevealEngine(settings: settings, feedback: FeedbackCenter(), mask: .snow, gesture: .blow)
+        engine.cardSize = CGSize(width: 300, height: 400)
+        for _ in 0..<20 { engine.microphoneFrame([voice, voice], dt: 0.043); engine.tick(dt: 0.043) }
+        #expect(engine.revealed == 0)
+        for _ in 0..<20 { engine.microphoneFrame([voice, wind], dt: 0.043); engine.tick(dt: 0.043) }
+        #expect(engine.blowChannel == 1)
+        #expect(engine.revealed > 0.02)
+    }
+
+    @Test func stereoTakeKeepsBothChannels() async throws {
+        let written: URL? = await withCheckedContinuation { continuation in
+            let recorder = BlowRecorder { url in continuation.resume(returning: url) }
+            recorder.start(BlowRecorder.Context(label: .souffle, seconds: 0.1, micSource: "test",
+                                                thresholdDB: -48, classifier: BlowClassifier()),
+                           sampleRate: Double(Signal.sampleRate))
+            let bottom = Signal.vowel(f0: 120, amplitude: 0.5), top = Signal.wind(amplitude: 0.5)
+            for _ in 0..<3 {
+                recorder.append([bottom, top], features: [Signal.features(bottom), Signal.features(top)])
+            }
+        }
+        let wav = try #require(written)
+        let csvURL = wav.deletingPathExtension().appendingPathExtension("csv")
+        defer {
+            try? FileManager.default.removeItem(at: wav)
+            try? FileManager.default.removeItem(at: csvURL)
+        }
+        let file = try AVAudioFile(forReading: wav)
+        #expect(file.fileFormat.channelCount == 2)
+        let csv = try String(contentsOf: csvURL, encoding: .utf8)
+        #expect(csv.contains("levelDB_c1"))
+        // Colonne « canal » : le canal 1 (vent) est suivi.
+        let firstRow = try #require(csv.split(separator: "\n").first { $0.hasPrefix("0.000,") })
+        #expect(firstRow.split(separator: ",")[11] == "1")
     }
 }

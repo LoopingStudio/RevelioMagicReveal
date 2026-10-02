@@ -74,7 +74,8 @@ final class InputCoordinator {
                 return
             }
             microphone = .listening
-            microphoneName = mic.sourceName
+            let stereoRefused = settings.mic == .both && mic.channelCount < 2
+            microphoneName = stereoRefused ? mic.sourceName + " · stéréo refusée" : mic.sourceName
         } catch {
             microphone = .unavailable
         }
@@ -94,7 +95,8 @@ final class InputCoordinator {
         mic.recorder.start(BlowRecorder.Context(label: label, seconds: 5,
                                                 micSource: settings.mic.rawValue,
                                                 thresholdDB: Float(settings.blowThresholdDB),
-                                                classifier: engine.blowClassifier),
+                                                classifier: engine.blowClassifier,
+                                                audioDiagnostic: mic.diagnostic),
                            sampleRate: mic.sampleRate)
     }
 

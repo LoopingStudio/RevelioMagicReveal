@@ -51,6 +51,9 @@ final class RevealEngine {
     private(set) var blowLevelDB: Float = -120
     private(set) var blowStrength: Float = 0
     private(set) var blowFeatures = BlowFeatures()
+    /// Niveau de chaque canal du micro (un en mono, deux en stéréo) et canal suivi.
+    private(set) var blowChannelLevels: [Float] = []
+    private(set) var blowChannel = 0
     /// Mode signature : la porte est ouverte (souffle reconnu et soutenu).
     private(set) var blowGateOpen = false
     /// Seuils du mode signature (lus par le mode debug et les enregistrements).
@@ -167,9 +170,20 @@ final class RevealEngine {
     /// Mesures d'un bloc micro (~40 ms), appelé ~25 fois par seconde par le moniteur micro.
     /// En mode signature, seul un son qui ressemble à un souffle soutenu fait monter l'intensité.
     func microphoneFrame(_ features: BlowFeatures, dt: Float) {
+        microphoneFrame([features], dt: dt)
+    }
+
+    /// Stéréo : un jeu de mesures par canal (bas, haut) ; on suit celui qui ressemble le plus à un souffle.
+    func microphoneFrame(_ channels: [BlowFeatures], dt: Float) {
+        guard !channels.isEmpty else { return }
+        let threshold = Float(settings.blowThresholdDB)
+        let chosen = BlowChannelChooser.choose(channels, classifier: blowGate.classifier, thresholdDB: threshold)
+        let levels = channels.map(\.levelDB)
+        if levels != blowChannelLevels { blowChannelLevels = levels }
+        if chosen != blowChannel { blowChannel = chosen }
+        let features = channels[chosen]
         if features.levelDB != blowLevelDB { blowLevelDB = features.levelDB }
         if features != blowFeatures { blowFeatures = features }
-        let threshold = Float(settings.blowThresholdDB)
         let level: Float
         switch settings.blowMode {
         case .level:

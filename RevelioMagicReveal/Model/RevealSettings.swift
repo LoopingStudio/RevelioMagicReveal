@@ -28,17 +28,22 @@ final class RevealSettings {
     @ObservationIgnored private let defaults: UserDefaults
 
     enum Key: String, CaseIterable {
-        case brushRadius, scratchStrength, blowThresholdDB, blowSpeed, blowSignature, micSource, shakeThresholdG, shakeSpeed
+        // v3 : le seuil par défaut, réglé sur des prises réelles, est passé de −26 à −48 puis −45 dB ;
+        // nouvelle clé pour que le défaut s'applique aussi à ceux qui avaient bougé l'ancien curseur.
+        case blowThresholdDB = "blowThresholdDB.v3"
+        // v2 : la capture stéréo (haut + bas) devient le choix par défaut.
+        case micSource = "micSource.v2"
+        case brushRadius, scratchStrength, blowSpeed, blowSignature, shakeThresholdG, shakeSpeed
         case autoFinishThreshold, hapticsEnabled, soundEnabled, debugOverlay
     }
 
     static let factory: [Key: Any] = [
         .brushRadius: 26.0,
         .scratchStrength: 0.75,
-        .blowThresholdDB: -26.0,
+        .blowThresholdDB: -45.0,
         .blowSpeed: 1.0,
         .blowSignature: true,
-        .micSource: "auto",
+        .micSource: "both",
         .shakeThresholdG: 1.1,
         .shakeSpeed: 1.0,
         .autoFinishThreshold: 0.7,
@@ -55,7 +60,7 @@ final class RevealSettings {
         blowThresholdDB = defaults.double(forKey: Key.blowThresholdDB.rawValue)
         blowSpeed = defaults.double(forKey: Key.blowSpeed.rawValue)
         blowSignature = defaults.bool(forKey: Key.blowSignature.rawValue)
-        micSource = defaults.string(forKey: Key.micSource.rawValue) ?? "auto"
+        micSource = defaults.string(forKey: Key.micSource.rawValue) ?? "both"
         shakeThresholdG = defaults.double(forKey: Key.shakeThresholdG.rawValue)
         shakeSpeed = defaults.double(forKey: Key.shakeSpeed.rawValue)
         autoFinishThreshold = defaults.double(forKey: Key.autoFinishThreshold.rawValue)
@@ -82,7 +87,7 @@ final class RevealSettings {
     }
 
     var blowMode: BlowAnalyzer.Mode { blowSignature ? .signature : .level }
-    var mic: MicSource { MicSource(rawValue: micSource) ?? .auto }
+    var mic: MicSource { MicSource(rawValue: micSource) ?? .both }
 
     private func save(_ value: Any, _ key: Key) {
         defaults.set(value, forKey: key.rawValue)

@@ -25,13 +25,16 @@ nonisolated final class BlowRecorder: @unchecked Sendable {
         var micSource: String
         var thresholdDB: Float
         var classifier: BlowClassifier
+        /// État de la session audio (voir `MicrophoneMonitor.diagnostic`).
+        var audioDiagnostic: String = ""
     }
 
     private struct Take {
         var context: Context
         var start = Date()
         var sampleRate: Double
-        var samples: [Float]
+        /// Un tableau d'échantillons par canal.
+        var samples: [[Float]]
         var rows: [String]
         var elapsed: Double = 0
         var gate: BlowGate
@@ -58,9 +61,7 @@ nonisolated final class BlowRecorder: @unchecked Sendable {
         let take = Take(context: context, sampleRate: sampleRate,
                         samples: [], rows: [], gate: gate)
         state.withLock { current in
-            var fresh = take
-            fresh.samples.reserveCapacity(Int(sampleRate * context.seconds) + 4096)
-            current = fresh
+            current = take
         }
     }
 
@@ -68,15 +69,31 @@ nonisolated final class BlowRecorder: @unchecked Sendable {
         state.withLock { $0 = nil }
     }
 
-    /// Appelé par le tap du micro pour chaque bloc analysé.
-    func append(_ samples: UnsafeBufferPointer<Float>, features: BlowFeatures) {
+    /// Appelé par le tap du micro pour chaque bloc analysé (un bloc et ses mesures par canal).
+    /// Les colonnes principales du CSV portent le canal suivi (celui qui ressemble le plus à un souffle) ;
+    /// les colonnes `_c0`, `_c1` détaillent chaque canal.
+    func append(_ blocks: [[Float]], features: [BlowFeatures]) {
+        guard !blocks.isEmpty, blocks.count == features.count else { return }
         let finished: Take? = state.withLockUnchecked { current in
             guard var take = current else { return nil }
-            let dt = Double(samples.count) / take.sampleRate
-            let open = take.gate.process(features, thresholdDB: take.context.thresholdDB, dt: Float(dt))
-            take.samples.append(contentsOf: samples)
-            take.rows.append(String(format: "%.3f,", take.elapsed) + features.csvRow
-                             + ",\(take.gate.lastBlowLike ? 1 : 0),\(open ? 1 : 0)")
+            if take.samples.count != blocks.count {
+                take.samples = blocks.map { _ in
+                    var channel: [Float] = []
+                    channel.reserveCapacity(Int(take.sampleRate * take.context.seconds) + 4096)
+                    return channel
+                }
+            }
+            let dt = Double(blocks[0].count) / take.sampleRate
+            let chosen = BlowChannelChooser.choose(features, classifier: take.context.classifier,
+                                                   thresholdDB: take.context.thresholdDB)
+            let open = take.gate.process(features[chosen], thresholdDB: take.context.thresholdDB, dt: Float(dt))
+            for c in blocks.indices { take.samples[c].append(contentsOf: blocks[c]) }
+            var row = String(format: "%.3f,", take.elapsed) + features[chosen].csvRow
+                + ",\(take.gate.lastBlowLike ? 1 : 0),\(open ? 1 : 0),\(chosen)"
+            for f in features {
+                row += String(format: ",%.2f,%.4f,%.4f,%.4f,%.1f", f.levelDB, f.harmonicity, f.lowRatio, f.highRatio, f.centroidHz)
+            }
+            take.rows.append(row)
             take.elapsed += dt
             if take.elapsed >= take.context.seconds {
                 current = nil
@@ -91,6 +108,11 @@ nonisolated final class BlowRecorder: @unchecked Sendable {
         }
     }
 
+    /// Mono : un seul canal.
+    func append(_ block: UnsafeBufferPointer<Float>, features: BlowFeatures) {
+        append([Array(block)], features: [features])
+    }
+
     private static func write(_ take: Take) -> URL? {
         do {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -102,29 +124,35 @@ nonisolated final class BlowRecorder: @unchecked Sendable {
             let wavURL = directory.appending(path: base + ".wav")
             let csvURL = directory.appending(path: base + ".csv")
 
+            let channels = max(1, take.samples.count)
             let settings: [String: Any] = [
                 AVFormatIDKey: kAudioFormatLinearPCM,
                 AVSampleRateKey: take.sampleRate,
-                AVNumberOfChannelsKey: 1,
+                AVNumberOfChannelsKey: channels,
                 AVLinearPCMBitDepthKey: 16,
                 AVLinearPCMIsFloatKey: false,
                 AVLinearPCMIsBigEndianKey: false,
             ]
             let file = try AVAudioFile(forWriting: wavURL, settings: settings, commonFormat: .pcmFormatFloat32, interleaved: false)
-            guard let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: AVAudioFrameCount(take.samples.count)) else {
+            let frames = take.samples.first?.count ?? 0
+            guard let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: AVAudioFrameCount(frames)) else {
                 return nil
             }
-            buffer.frameLength = AVAudioFrameCount(take.samples.count)
-            take.samples.withUnsafeBufferPointer { source in
-                buffer.floatChannelData![0].update(from: source.baseAddress!, count: source.count)
+            buffer.frameLength = AVAudioFrameCount(frames)
+            for c in take.samples.indices {
+                take.samples[c].withUnsafeBufferPointer { source in
+                    buffer.floatChannelData![c].update(from: source.baseAddress!, count: source.count)
+                }
             }
             try file.write(from: buffer)
 
             let c = take.context.classifier
             var csv = """
             # étiquette=\(take.context.label.rawValue) micro=\(take.context.micSource) fréquence=\(Int(take.sampleRate)) Hz
-            # seuilDB=\(take.context.thresholdDB) maxHarmonicity=\(c.maxHarmonicity) minLowRatio=\(c.minLowRatio) maxHighRatio=\(c.maxHighRatio) minDuration=\(c.minDuration) releaseDuration=\(c.releaseDuration)
-            t,\(BlowFeatures.csvHeader),blowLike,gateOpen
+            # seuilDB=\(take.context.thresholdDB) maxHarmonicity=\(c.maxHarmonicity) minLowRatio=\(c.minLowRatio) maxHighRatio=\(c.maxHighRatio) maxCentroidHz=\(c.maxCentroidHz) minDuration=\(c.minDuration) releaseDuration=\(c.releaseDuration)
+            # session : \(take.context.audioDiagnostic)
+            # canaux=\(channels) (colonnes principales = canal suivi « canal » ; détail par canal en _c0, _c1)
+            t,\(BlowFeatures.csvHeader),blowLike,gateOpen,canal\(perChannelHeader(channels))
 
             """
             csv += take.rows.joined(separator: "\n")
@@ -133,6 +161,10 @@ nonisolated final class BlowRecorder: @unchecked Sendable {
         } catch {
             return nil
         }
+    }
+
+    private static func perChannelHeader(_ channels: Int) -> String {
+        (0..<channels).map { c in ",levelDB_c\(c),harmonicity_c\(c),lowRatio_c\(c),highRatio_c\(c),centroidHz_c\(c)" }.joined()
     }
 
     /// Tous les fichiers enregistrés, du plus récent au plus ancien.

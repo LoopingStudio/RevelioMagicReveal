@@ -6,10 +6,11 @@ import os
 
 /// Micro intégré à utiliser : l'iPhone en a un en bas, un à l'avant (écouteur) et un à l'arrière.
 nonisolated enum MicSource: String, CaseIterable, Sendable {
-    case auto, bottom, front, back
+    case both, auto, bottom, front, back
 
     var title: String {
         switch self {
+        case .both: "Haut + bas (stéréo)"
         case .auto: "Automatique"
         case .bottom: "Bas"
         case .front: "Avant"
@@ -19,7 +20,7 @@ nonisolated enum MicSource: String, CaseIterable, Sendable {
 
     var orientation: AVAudioSession.Orientation? {
         switch self {
-        case .auto: nil
+        case .both, .auto: nil
         case .bottom: .bottom
         case .front: .front
         case .back: .back
@@ -37,14 +38,15 @@ nonisolated final class MicrophoneMonitor: @unchecked Sendable {
 
     /// Seule file qui touche `audioEngine` et `isRunning`.
     private let queue = DispatchQueue(label: "RevelioMagicReveal.microphone", qos: .userInitiated)
-    private let audioEngine = AVAudioEngine()
+    /// Recréé à chaque démarrage : passer de mono à stéréo change le format matériel de l'entrée.
+    private var audioEngine = AVAudioEngine()
     private var isRunning = false
-    private let onFrame: @MainActor @Sendable (_ features: BlowFeatures, _ dt: Float) -> Void
+    private let onFrame: @MainActor @Sendable (_ channels: [BlowFeatures], _ dt: Float) -> Void
     /// Fréquence d'échantillonnage et micro réellement utilisés (lus depuis le fil principal).
-    private let live = OSAllocatedUnfairLock(initialState: (sampleRate: 48_000.0, sourceName: "?"))
+    private let live = OSAllocatedUnfairLock(initialState: (sampleRate: 48_000.0, sourceName: "?", channels: 1))
     let recorder: BlowRecorder
 
-    init(recorder: BlowRecorder, onFrame: @escaping @MainActor @Sendable (_ features: BlowFeatures, _ dt: Float) -> Void) {
+    init(recorder: BlowRecorder, onFrame: @escaping @MainActor @Sendable (_ channels: [BlowFeatures], _ dt: Float) -> Void) {
         self.recorder = recorder
         self.onFrame = onFrame
     }
@@ -56,6 +58,13 @@ nonisolated final class MicrophoneMonitor: @unchecked Sendable {
     var sampleRate: Double { live.withLock { $0.sampleRate } }
     /// Nom du micro choisi par le système (« Bas », « Avant »… selon la langue de l'appareil).
     var sourceName: String { live.withLock { $0.sourceName } }
+    private let diagnosticLock = OSAllocatedUnfairLock(initialState: "")
+    /// État de la session audio au démarrage (mode, micro, motif polaire, canaux) : écrit dans les
+    /// enregistrements pour comprendre ce qu'iOS a accordé.
+    var diagnostic: String { diagnosticLock.withLock { $0 } }
+
+    /// 2 quand la capture stéréo (bas + haut) a été accordée par le système, 1 sinon.
+    var channelCount: Int { live.withLock { $0.channels } }
 
     func start(source: MicSource) async throws {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
@@ -85,19 +94,29 @@ nonisolated final class MicrophoneMonitor: @unchecked Sendable {
         try session.setActive(true)
         selectBuiltInMic(source, in: session)
 
+        audioEngine = AVAudioEngine()
         let input = audioEngine.inputNode
         let format = input.outputFormat(forBus: 0)
         guard format.sampleRate > 0, format.channelCount > 0 else { throw Failure.noInput }
-        let sourceName = session.inputDataSource?.dataSourceName ?? session.currentRoute.inputs.first?.portName ?? "?"
-        live.withLock { $0 = (format.sampleRate, sourceName) }
+        let channels = min(2, Int(format.channelCount))
+        let baseName = session.inputDataSource?.dataSourceName ?? session.currentRoute.inputs.first?.portName ?? "?"
+        let sourceName = channels == 2 ? baseName + " · stéréo" : baseName
+        let dataSource = session.inputDataSource
+        let diagnostic = "mode=\(session.mode.rawValue) source=\(dataSource?.dataSourceName ?? "?") "
+            + "polaire=\(dataSource?.selectedPolarPattern?.rawValue ?? "?") "
+            + "polairesPossibles=\((dataSource?.supportedPolarPatterns ?? []).map(\.rawValue).joined(separator: "|")) "
+            + "canauxMax=\(session.maximumInputNumberOfChannels) canauxSession=\(session.inputNumberOfChannels) "
+            + "canauxMoteur=\(format.channelCount)"
+        diagnosticLock.withLock { $0 = diagnostic }
+        live.withLock { $0 = (format.sampleRate, sourceName, channels) }
 
         let onFrame = self.onFrame
-        let deliver: @Sendable (BlowFeatures, Float) -> Void = { features, dt in
+        let deliver: @Sendable ([BlowFeatures], Float) -> Void = { features, dt in
             Task { @MainActor in onFrame(features, dt) }
         }
-        let extractor = BlowFeatureExtractor(sampleRate: Float(format.sampleRate))
+        let extractors = (0..<channels).map { _ in BlowFeatureExtractor(sampleRate: Float(format.sampleRate)) }
         input.installTap(onBus: 0, bufferSize: 2048, format: format,
-                         block: Self.makeTap(extractor: extractor, recorder: recorder, deliver: deliver))
+                         block: Self.makeTap(extractors: extractors, recorder: recorder, deliver: deliver))
         do {
             try audioEngine.start()
         } catch {
@@ -107,12 +126,30 @@ nonisolated final class MicrophoneMonitor: @unchecked Sendable {
         isRunning = true
     }
 
-    /// Choisit le micro intégré demandé ; « Automatique » laisse le choix au système.
+    /// Choisit le micro intégré demandé ; « Automatique » laisse le choix au système. « Haut + bas »
+    /// demande la capture stéréo (deux micros) quand l'appareil la propose, sinon reste en mono.
     private func selectBuiltInMic(_ source: MicSource, in session: AVAudioSession) {
         guard let builtIn = session.availableInputs?.first(where: { $0.portType == .builtInMic }) else { return }
         try? session.setPreferredInput(builtIn)
+        if source == .both {
+            guard let stereo = builtIn.dataSources?.first(where: { $0.supportedPolarPatterns?.contains(.stereo) == true }) else { return }
+            try? stereo.setPreferredPolarPattern(.stereo)
+            try? builtIn.setPreferredDataSource(stereo)
+            try? session.setPreferredInputOrientation(.portrait)
+            // Le passage en stéréo est asynchrone : tant qu'il n'est pas fait, le maximum de canaux
+            // reste à 1 et une demande de 2 canaux est refusée. On attend jusqu'à ~0,5 s.
+            for _ in 0..<10 where session.maximumInputNumberOfChannels < 2 {
+                usleep(50_000)
+            }
+            try? session.setPreferredInputNumberOfChannels(2)
+            return
+        }
+        try? session.setPreferredInputNumberOfChannels(1)
         guard let orientation = source.orientation,
               let dataSource = builtIn.dataSources?.first(where: { $0.orientation == orientation }) else { return }
+        if dataSource.supportedPolarPatterns?.contains(.omnidirectional) == true {
+            try? dataSource.setPreferredPolarPattern(.omnidirectional)
+        }
         try? builtIn.setPreferredDataSource(dataSource)
     }
 
@@ -125,23 +162,30 @@ nonisolated final class MicrophoneMonitor: @unchecked Sendable {
     }
 
     /// Le tap tourne sur un fil audio : il ne doit pas hériter d'une isolation d'acteur. Les tampons
-    /// reçus sont recoupés en blocs de la taille de l'analyse.
-    private static func makeTap(extractor: BlowFeatureExtractor, recorder: BlowRecorder,
-                                deliver: @escaping @Sendable (BlowFeatures, Float) -> Void) -> AVAudioNodeTapBlock {
-        let pending = SampleQueue()
-        let size = extractor.frameSize
-        let dt = Float(size) / extractor.sampleRate
+    /// reçus sont recoupés en blocs de la taille de l'analyse, canal par canal.
+    private static func makeTap(extractors: [BlowFeatureExtractor], recorder: BlowRecorder,
+                                deliver: @escaping @Sendable ([BlowFeatures], Float) -> Void) -> AVAudioNodeTapBlock {
+        let pending = extractors.map { _ in SampleQueue() }
+        let size = extractors[0].frameSize
+        let dt = Float(size) / extractors[0].sampleRate
         return { buffer, _ in
-            guard let channel = buffer.floatChannelData?[0] else { return }
-            pending.samples.append(contentsOf: UnsafeBufferPointer(start: channel, count: Int(buffer.frameLength)))
-            while pending.samples.count >= size {
-                pending.samples.withUnsafeBufferPointer { all in
-                    let block = UnsafeBufferPointer(rebasing: all[0..<size])
-                    let features = extractor.analyze(block)
-                    recorder.append(block, features: features)
-                    deliver(features, dt)
+            guard let data = buffer.floatChannelData else { return }
+            let frames = Int(buffer.frameLength)
+            for c in pending.indices {
+                let channel = min(c, Int(buffer.format.channelCount) - 1)
+                pending[c].samples.append(contentsOf: UnsafeBufferPointer(start: data[channel], count: frames))
+            }
+            while pending[0].samples.count >= size {
+                var features: [BlowFeatures] = []
+                var blocks: [[Float]] = []
+                for c in pending.indices {
+                    let block = Array(pending[c].samples[0..<size])
+                    features.append(block.withUnsafeBufferPointer { extractors[c].analyze($0) })
+                    blocks.append(block)
+                    pending[c].samples.removeFirst(size)
                 }
-                pending.samples.removeFirst(size)
+                recorder.append(blocks, features: features)
+                deliver(features, dt)
             }
         }
     }

@@ -19,6 +19,9 @@ struct DebugPanel: View {
             case .blow:
                 MicMeter(levelDB: engine.blowLevelDB, thresholdDB: Float(settings.blowThresholdDB))
                 Gauge(label: "Souffle", value: engine.blowStrength)
+                if engine.blowChannelLevels.count > 1 {
+                    Text(channelSummary)
+                }
                 BlowSignatureReadout(features: engine.blowFeatures, classifier: engine.blowClassifier,
                                      signatureMode: settings.blowSignature, gateOpen: engine.blowGateOpen,
                                      microphoneName: inputs.microphoneName)
@@ -48,6 +51,15 @@ struct DebugPanel: View {
         .padding(12)
         .glassEffect(in: .rect(cornerRadius: 16))
         .onDisappear { simulate(false) }
+    }
+
+    /// Stéréo : niveau de chaque canal, le canal suivi entre crochets.
+    private var channelSummary: String {
+        engine.blowChannelLevels.enumerated().map { index, level in
+            let text = "canal \(index + 1) \(Int(level.rounded())) dB"
+            return index == engine.blowChannel ? "[\(text)]" : text
+        }
+        .joined(separator: " · ")
     }
 
     private var phaseLabel: String {
@@ -142,6 +154,9 @@ private struct BlowSignatureReadout: View {
                           ok: features.harmonicity <= classifier.maxHarmonicity)
                 criterion("Graves", value: "\(Int(features.lowRatio * 100)) %", ok: features.lowRatio >= classifier.minLowRatio)
                 criterion("Aigus", value: "\(Int(features.highRatio * 100)) %", ok: features.highRatio <= classifier.maxHighRatio)
+            }
+            HStack(spacing: 10) {
+                criterion("Centre", value: "\(Int(features.centroidHz)) Hz", ok: features.centroidHz <= classifier.maxCentroidHz)
             }
             Text(verdict)
                 .foregroundStyle(gateOpen ? Palette.gold : Palette.cream.opacity(0.7))

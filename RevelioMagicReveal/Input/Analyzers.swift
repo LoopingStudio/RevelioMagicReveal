@@ -78,21 +78,44 @@ func screenVector(fromDevice v: SIMD3<Float>) -> SIMD2<Float> {
 }
 
 /// Seuils qui disent si un bloc ressemble à un souffle plutôt qu'à la voix.
-/// Valeurs de départ à régler avec des enregistrements réels (mode debug).
+///
+/// Réglés le 2026-10-02 sur des prises réelles (iPhone, micro du bas) : souffle à −29…−44 dB, centre
+/// 70-195 Hz, graves 81-99 %, harmonicité surtout < 0,45 ; voix grave (F0 ≈ 100 Hz) à −38…−52 dB,
+/// centre 180-580 Hz, harmonicité 0,5-0,93 sur les voyelles, avec des fins de mots graves et faibles
+/// (−45…−48 dB, centre 200-220 Hz) qui frôlent les seuils. Rejouer `scripts/analyse-souffle.py` sur
+/// de nouvelles prises avant de les changer.
 nonisolated struct BlowClassifier: Equatable, Sendable {
     /// Au-dessus, le bloc a une hauteur de note : voyelle, chant, musique.
-    var maxHarmonicity: Float = 0.5
+    var maxHarmonicity: Float = 0.6
     /// En dessous, pas assez de grondement d'air : chuchotement, sifflante, bruit lointain.
-    var minLowRatio: Float = 0.3
+    var minLowRatio: Float = 0.75
     /// Au-dessus, sifflante (« sss », « chhh ») plutôt que souffle.
-    var maxHighRatio: Float = 0.3
+    var maxHighRatio: Float = 0.05
+    /// Au-dessus, le spectre est trop haut pour un souffle : c'est le critère qui écarte le mieux la voix.
+    var maxCentroidHz: Float = 200
     /// Durée minimale de blocs « souffle » consécutifs avant d'ouvrir : écarte claquements et plosives.
     var minDuration: Float = 0.12
-    /// Tolérance de blocs « non souffle » avant de refermer.
-    var releaseDuration: Float = 0.15
+    /// Tolérance de blocs « non souffle » avant de refermer (pointes d'harmonicité pendant un souffle).
+    var releaseDuration: Float = 0.18
 
     func isBlowLike(_ f: BlowFeatures, thresholdDB: Float) -> Bool {
-        f.levelDB >= thresholdDB && f.harmonicity <= maxHarmonicity && f.lowRatio >= minLowRatio && f.highRatio <= maxHighRatio
+        f.levelDB >= thresholdDB && f.harmonicity <= maxHarmonicity && f.lowRatio >= minLowRatio
+            && f.highRatio <= maxHighRatio && f.centroidHz <= maxCentroidHz
+    }
+}
+
+/// En stéréo, deux canaux (micro du bas et micro du haut) : on suit celui qui ressemble le plus à un
+/// souffle, à défaut le plus fort. On peut ainsi souffler vers le haut ou vers le bas de l'iPhone.
+nonisolated enum BlowChannelChooser {
+    static func choose(_ channels: [BlowFeatures], classifier: BlowClassifier, thresholdDB: Float) -> Int {
+        var best = -1
+        var bestLevel = -Float.infinity
+        for (i, f) in channels.enumerated() where classifier.isBlowLike(f, thresholdDB: thresholdDB) && f.levelDB > bestLevel {
+            best = i
+            bestLevel = f.levelDB
+        }
+        if best >= 0 { return best }
+        return channels.indices.max { channels[$0].levelDB < channels[$1].levelDB } ?? 0
     }
 }
 
@@ -105,31 +128,40 @@ extension BlowAnalyzer {
     }
 }
 
-/// Porte temporelle du mode signature : il faut un souffle soutenu pour ouvrir.
+/// Porte temporelle du mode signature, avec hystérésis :
+/// - pour ouvrir, il faut `minDuration` de blocs « souffle » **consécutifs** (un seul bloc « non souffle »
+///   remet le compteur à zéro : des fins de mots graves dispersées ne s'additionnent pas) ;
+/// - une fois ouverte, elle tolère `releaseDuration` de blocs « non souffle » (pointes d'harmonicité
+///   pendant un vrai souffle) avant de se refermer.
 nonisolated struct BlowGate: Sendable {
     var classifier = BlowClassifier()
     private(set) var isOpen = false
     private(set) var lastBlowLike = false
-    private var blowLikeTime: Float = 0
+    private var consecutiveBlow: Float = 0
     private var otherTime: Float = 0
 
     mutating func process(_ f: BlowFeatures, thresholdDB: Float, dt: Float) -> Bool {
         lastBlowLike = classifier.isBlowLike(f, thresholdDB: thresholdDB)
-        if lastBlowLike {
-            blowLikeTime += dt
-            otherTime = 0
+        if isOpen {
+            otherTime = lastBlowLike ? 0 : otherTime + dt
+            if otherTime >= classifier.releaseDuration {
+                isOpen = false
+                consecutiveBlow = 0
+            }
         } else {
-            otherTime += dt
-            if otherTime >= classifier.releaseDuration { blowLikeTime = 0 }
+            consecutiveBlow = lastBlowLike ? consecutiveBlow + dt : 0
+            if consecutiveBlow >= classifier.minDuration {
+                isOpen = true
+                otherTime = 0
+            }
         }
-        isOpen = blowLikeTime >= classifier.minDuration && otherTime < classifier.releaseDuration
         return isOpen
     }
 
     mutating func reset() {
         isOpen = false
         lastBlowLike = false
-        blowLikeTime = 0
+        consecutiveBlow = 0
         otherTime = 0
     }
 }
