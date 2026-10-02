@@ -15,9 +15,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "A10000000000000000000010"
-               BuildableName = "RevelioNoel.app"
-               BlueprintName = "RevelioNoel"
-               ReferencedContainer = "container:RevelioNoel.xcodeproj">
+               BuildableName = "RevelioMagicReveal.app"
+               BlueprintName = "RevelioMagicReveal"
+               ReferencedContainer = "container:RevelioMagicReveal.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -34,9 +34,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "A10000000000000000000011"
-               BuildableName = "RevelioNoelTests.xctest"
-               BlueprintName = "RevelioNoelTests"
-               ReferencedContainer = "container:RevelioNoel.xcodeproj">
+               BuildableName = "RevelioMagicRevealTests.xctest"
+               BlueprintName = "RevelioMagicRevealTests"
+               ReferencedContainer = "container:RevelioMagicReveal.xcodeproj">
             </BuildableReference>
          </TestableReference>
       </Testables>
@@ -56,9 +56,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "A10000000000000000000010"
-            BuildableName = "RevelioNoel.app"
-            BlueprintName = "RevelioNoel"
-            ReferencedContainer = "container:RevelioNoel.xcodeproj">
+            BuildableName = "RevelioMagicReveal.app"
+            BlueprintName = "RevelioMagicReveal"
+            ReferencedContainer = "container:RevelioMagicReveal.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </LaunchAction>
@@ -73,9 +73,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "A10000000000000000000010"
-            BuildableName = "RevelioNoel.app"
-            BlueprintName = "RevelioNoel"
-            ReferencedContainer = "container:RevelioNoel.xcodeproj">
+            BuildableName = "RevelioMagicReveal.app"
+            BlueprintName = "RevelioMagicReveal"
+            ReferencedContainer = "container:RevelioMagicReveal.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </ProfileAction>

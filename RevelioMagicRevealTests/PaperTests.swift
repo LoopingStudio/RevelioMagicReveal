@@ -2,7 +2,7 @@ import CoreGraphics
 import Foundation
 import Testing
 import simd
-@testable import RevelioNoel
+@testable import RevelioMagicReveal
 
 struct PaperGeometryTests {
     private let aspect: Float = 0.75

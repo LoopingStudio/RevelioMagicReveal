@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct RevelioNoelApp: App {
+struct RevelioMagicRevealApp: App {
     @State private var model = AppModel(launch: LaunchOptions())
 
     var body: some Scene {

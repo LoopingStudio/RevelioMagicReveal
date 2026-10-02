@@ -75,7 +75,7 @@ struct ContentView: View {
                 Text("Revelio")
                     .font(.system(.title2, design: .serif).weight(.semibold))
                     .foregroundStyle(Palette.cream)
-                Text("Noël · banc d'essai")
+                Text("Magic Reveal · Noël")
                     .font(.caption.weight(.medium))
                     .foregroundStyle(Palette.cream.opacity(0.6))
             }

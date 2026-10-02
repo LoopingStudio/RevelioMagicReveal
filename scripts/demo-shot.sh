@@ -10,11 +10,11 @@ UDID=$(xcrun simctl list devices available | grep -F "$SIM (" | head -1 | sed -E
 [[ -n "$UDID" ]] || { echo "simulateur introuvable : $SIM"; exit 1; }
 xcrun simctl boot "$UDID" 2>/dev/null || true
 xcrun simctl bootstatus "$UDID" -b >/dev/null
-xcodebuild build -project "$ROOT/RevelioNoel.xcodeproj" -scheme RevelioNoel \
+xcodebuild build -project "$ROOT/RevelioMagicReveal.xcodeproj" -scheme RevelioMagicReveal \
   -destination "platform=iOS Simulator,id=$UDID" -derivedDataPath "$DERIVED" -quiet
-xcrun simctl install "$UDID" "$DERIVED/Build/Products/Debug-iphonesimulator/RevelioNoel.app"
-xcrun simctl terminate "$UDID" com.pictarine.proto.RevelioNoel 2>/dev/null || true
-xcrun simctl launch "$UDID" com.pictarine.proto.RevelioNoel -RNMask "$MASK" -RNGesture "$GESTURE" -RNDemo "$DEMO" >/dev/null
+xcrun simctl install "$UDID" "$DERIVED/Build/Products/Debug-iphonesimulator/RevelioMagicReveal.app"
+xcrun simctl terminate "$UDID" com.pictarine.proto.RevelioMagicReveal 2>/dev/null || true
+xcrun simctl launch "$UDID" com.pictarine.proto.RevelioMagicReveal -RNMask "$MASK" -RNGesture "$GESTURE" -RNDemo "$DEMO" >/dev/null
 sleep "$DELAY"
 xcrun simctl io "$UDID" screenshot "$OUT" >/dev/null 2>&1
 echo "capture : $OUT"

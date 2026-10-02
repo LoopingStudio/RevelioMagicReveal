@@ -12,7 +12,7 @@ nonisolated final class MicrophoneMonitor: @unchecked Sendable {
     enum Failure: Error { case noInput }
 
     /// Seule file qui touche `audioEngine` et `isRunning`.
-    private let queue = DispatchQueue(label: "RevelioNoel.microphone", qos: .userInitiated)
+    private let queue = DispatchQueue(label: "RevelioMagicReveal.microphone", qos: .userInitiated)
     private let audioEngine = AVAudioEngine()
     private var isRunning = false
     private let onLevel: @MainActor @Sendable (_ decibels: Float, _ dt: Float) -> Void
@@ -108,7 +108,7 @@ final class MotionMonitor {
 
 extension Notification.Name {
     /// Secousse système (menu Device > Shake du simulateur, ⌃⌘Z).
-    static let deviceDidShake = Notification.Name("RevelioNoel.deviceDidShake")
+    static let deviceDidShake = Notification.Name("RevelioMagicReveal.deviceDidShake")
 }
 
 extension UIWindow {

@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import RevelioNoel
+@testable import RevelioMagicReveal
 
 struct FeedbackCurvesTests {
     private let speeds: [Float] = stride(from: 0, through: 1, by: 0.05).map { Float($0) }

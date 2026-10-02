@@ -76,7 +76,7 @@ final class ProceduralSound {
 /// Moteur distinct de celui du micro, mais même session et même catégorie (`.playAndRecord` /
 /// `.measurement`) : passer en `.playback` casserait la détection du souffle.
 nonisolated final class AudioOutput: @unchecked Sendable {
-    private let queue = DispatchQueue(label: "com.pictarine.proto.RevelioNoel.feedback-audio", qos: .userInitiated)
+    private let queue = DispatchQueue(label: "com.pictarine.proto.RevelioMagicReveal.feedback-audio", qos: .userInitiated)
     private let parameters: SynthParameters
 
     // État confiné à `queue` (d'où `@unchecked Sendable`).
@@ -297,7 +297,7 @@ nonisolated final class AudioOutput: @unchecked Sendable {
 /// Journal des retours : une seule ligne par type d'erreur, pour ne pas inonder la console.
 /// Appelable depuis n'importe quel fil (file audio, main actor).
 nonisolated enum FeedbackLog {
-    private static let logger = Logger(subsystem: "com.pictarine.proto.RevelioNoel", category: "Feedback")
+    private static let logger = Logger(subsystem: "com.pictarine.proto.RevelioMagicReveal", category: "Feedback")
     private static let reported = Mutex<Set<String>>([])
 
     static func report(_ key: String, _ error: any Error) {
