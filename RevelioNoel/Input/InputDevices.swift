@@ -45,7 +45,11 @@ nonisolated final class MicrophoneMonitor: @unchecked Sendable {
     private func startOnQueue() throws {
         guard !isRunning else { return }
         let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.playAndRecord, mode: .measurement, options: [.mixWithOthers, .defaultToSpeaker])
+        // Même configuration que la sortie audio (Feedback/ProceduralSound) : souvent déjà en place.
+        let options: AVAudioSession.CategoryOptions = [.mixWithOthers, .defaultToSpeaker]
+        if session.category != .playAndRecord || session.mode != .measurement || session.categoryOptions != options {
+            try session.setCategory(.playAndRecord, mode: .measurement, options: options)
+        }
         try session.setActive(true)
         let input = audioEngine.inputNode
         let format = input.outputFormat(forBus: 0)
