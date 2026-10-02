@@ -1,9 +1,13 @@
+import AVFoundation
 import SwiftUI
 
 /// La photo façon tirage, son masque, et les particules qui s'en échappent.
 struct RevealCardView: View {
     let engine: RevealEngine
-    let photo: UIImage
+    let cover: UIImage
+    let player: AVPlayer?
+    /// Tap sur la carte une fois révélée (pour revoir la vidéo).
+    var onRevealedTap: () -> Void = {}
 
     var body: some View {
         photoArea
@@ -18,13 +22,19 @@ struct RevealCardView: View {
     }
 
     private var photoArea: some View {
-        let image = Image(uiImage: photo)
+        let image = Image(uiImage: cover)
         return Color.clear
             .aspectRatio(CGFloat(RevealEngine.cardAspect), contentMode: .fit)
             .overlay {
                 image
                     .resizable()
                     .scaledToFill()
+            }
+            .overlay {
+                if let player {
+                    VideoLayerView(player: player)
+                        .allowsHitTesting(false)
+                }
             }
             .overlay {
                 MaskLayer(engine: engine, photo: image)
@@ -41,7 +51,11 @@ struct RevealCardView: View {
                     .onChanged { value in
                         engine.scratch(at: value.location, time: value.time.timeIntervalSinceReferenceDate)
                     }
-                    .onEnded { _ in engine.endScratch() }
+                    .onEnded { value in
+                        engine.endScratch()
+                        let moved = hypot(value.translation.width, value.translation.height)
+                        if engine.phase == .revealed, moved < 12 { onRevealedTap() }
+                    }
             )
             .onGeometryChange(for: CGSize.self) { $0.size } action: { size in
                 engine.cardSize = size

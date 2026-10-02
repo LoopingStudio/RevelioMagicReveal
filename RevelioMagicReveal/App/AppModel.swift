@@ -8,7 +8,7 @@ final class AppModel {
     let feedback: FeedbackCenter
     let engine: RevealEngine
     let inputs: InputCoordinator
-    let photos: PhotoStore
+    let media: MediaStore
 
     @ObservationIgnored private var driver: DisplayLinkDriver?
     @ObservationIgnored private let launch: LaunchOptions
@@ -25,7 +25,7 @@ final class AppModel {
         self.feedback = feedback
         self.engine = engine
         inputs = InputCoordinator(engine: engine, settings: settings)
-        photos = PhotoStore()
+        media = MediaStore()
     }
 
     func start() {
@@ -41,6 +41,7 @@ final class AppModel {
         driver.start()
         self.driver = driver
         inputs.startMotion()
+        Task { await media.useSampleVideo() }
         if let demo = launch.demo {
             // Laisse la carte prendre sa taille réelle avant de jouer le script.
             Task {

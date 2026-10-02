@@ -2,8 +2,10 @@ import SwiftUI
 
 struct SettingsSheet: View {
     @Bindable var settings: RevealSettings
-    let photos: PhotoStore
+    let media: MediaStore
     let onFeedbackChange: () -> Void
+    /// Le contenu a changé : on recouvre la carte.
+    let onContentChange: () -> Void
 
     @Environment(\.dismiss) private var dismiss
 
@@ -41,8 +43,17 @@ struct SettingsSheet: View {
                     Toggle("Haptique", isOn: $settings.hapticsEnabled)
                     Toggle("Son", isOn: $settings.soundEnabled)
                 }
-                Section("Photo") {
-                    Button("Revenir à la photo d'exemple") { photos.useSample() }
+                Section("Contenu révélé") {
+                    Button("Vidéo d'exemple") {
+                        Task {
+                            await media.useSampleVideo()
+                            onContentChange()
+                        }
+                    }
+                    Button("Photo d'exemple") {
+                        media.useSamplePhoto()
+                        onContentChange()
+                    }
                 }
                 Section("Debug") {
                     Toggle("Panneau de debug", isOn: $settings.debugOverlay)
