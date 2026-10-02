@@ -172,6 +172,18 @@ final class RevealEngine {
         feedback.shake(strength: impulse.strength, mask: mask)
     }
 
+    /// Vrai quand quelque chose bouge vite (doigt posé, souffle, chute, particules, auto-fin) :
+    /// l'écran tourne alors à 120 Hz, sinon il ralentit pour épargner le processeur et la batterie.
+    var needsFullFrameRate: Bool {
+        !particles.isEmpty
+            || phase == .finishing
+            || lastScratch != nil
+            || blowStrength > 0 || simulatedBlow > 0
+            || shakeProgress < shakeTarget
+            || (demo.map { !$0.finished } ?? false)
+            || (mask == .paper && !paper.falling.isEmpty)
+    }
+
     // MARK: - Tick
 
     func tick(dt rawDt: Float) {

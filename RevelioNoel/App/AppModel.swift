@@ -34,7 +34,9 @@ final class AppModel {
         syncFeedbackSettings()
         feedback.prepare()
         let driver = DisplayLinkDriver { [weak self] dt in
-            self?.engine.tick(dt: dt)
+            guard let self else { return }
+            engine.tick(dt: dt)
+            self.driver?.setFast(engine.needsFullFrameRate)
         }
         driver.start()
         self.driver = driver

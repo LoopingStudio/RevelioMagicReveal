@@ -225,6 +225,17 @@ struct RevealEngineTests {
         #expect(engine.phase == .covered)
     }
 
+    @Test func frameRateDropsWhenNothingMoves() {
+        let engine = makeEngine()
+        engine.tick(dt: 1.0 / 60)
+        #expect(!engine.needsFullFrameRate)
+        engine.scratch(at: CGPoint(x: 150, y: 200), time: 0)
+        #expect(engine.needsFullFrameRate)
+        engine.endScratch()
+        for _ in 0..<240 { engine.tick(dt: 1.0 / 60) }
+        #expect(!engine.needsFullFrameRate)
+    }
+
     @Test func changingMaskCoversThePhotoAgain() {
         let engine = makeEngine()
         engine.scratch(at: CGPoint(x: 150, y: 200), time: 0)
