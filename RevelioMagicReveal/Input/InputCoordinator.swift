@@ -9,6 +9,12 @@ final class InputCoordinator {
     enum MicrophoneState: Equatable { case off, listening, denied, unavailable }
 
     private(set) var microphone: MicrophoneState = .off
+    /// Prise en cours (mode debug), nil sinon.
+    private(set) var recordingLabel: BlowRecorder.Label?
+    /// Fichiers d'enregistrement disponibles (WAV + CSV).
+    private(set) var recordings: [URL] = BlowRecorder.recordings()
+    /// Nom du micro réellement utilisé, tel que le système le donne.
+    private(set) var microphoneName = ""
 
     @ObservationIgnored private let engine: RevealEngine
     @ObservationIgnored private let settings: RevealSettings
@@ -22,8 +28,14 @@ final class InputCoordinator {
         self.engine = engine
         self.settings = settings
         shakeAnalyzer = ShakeAnalyzer(thresholdG: Float(settings.shakeThresholdG))
-        mic = MicrophoneMonitor { [weak engine] db, dt in
-            engine?.microphoneLevel(db, dt: dt)
+        // Le recorder rappelle hors fil principal ; on repasse sur le main actor pour l'état observé.
+        let finished = FinishedRelay()
+        mic = MicrophoneMonitor(recorder: BlowRecorder { url in finished.send(url) }) { [weak engine] features, dt in
+            engine?.microphoneFrame(features, dt: dt)
+        }
+        finished.handler = { [weak self] _ in
+            self?.recordingLabel = nil
+            self?.recordings = BlowRecorder.recordings()
         }
     }
 
@@ -54,7 +66,7 @@ final class InputCoordinator {
             return
         }
         do {
-            try await mic.start()
+            try await mic.start(source: settings.mic)
             // Le geste a pu changer pendant le démarrage du micro.
             guard engine.gesture == .blow else {
                 mic.stop()
@@ -62,13 +74,38 @@ final class InputCoordinator {
                 return
             }
             microphone = .listening
+            microphoneName = mic.sourceName
         } catch {
             microphone = .unavailable
         }
     }
 
+    /// Nouveau choix de micro : on relance la capture si elle tourne.
+    func restartMicrophone(for gesture: RevealGesture) async {
+        mic.stop()
+        microphone = .off
+        await activate(for: gesture)
+    }
+
+    /// Enregistre 5 s étiquetées (son + mesures) pour régler la détection.
+    func record(_ label: BlowRecorder.Label) {
+        guard microphone == .listening, recordingLabel == nil else { return }
+        recordingLabel = label
+        mic.recorder.start(BlowRecorder.Context(label: label, seconds: 5,
+                                                micSource: settings.mic.rawValue,
+                                                thresholdDB: Float(settings.blowThresholdDB),
+                                                classifier: engine.blowClassifier),
+                           sampleRate: mic.sampleRate)
+    }
+
+    func deleteRecordings() {
+        BlowRecorder.deleteAll()
+        recordings = []
+    }
+
     func suspend() {
         mic.stop()
+        recordingLabel = nil
         if microphone == .listening { microphone = .off }
     }
 
@@ -85,5 +122,14 @@ final class InputCoordinator {
         if let impulse = shakeAnalyzer.process(acceleration: SIMD3(Float(a.x), Float(a.y), Float(a.z)), dt: dt) {
             engine.shakeImpulse(impulse)
         }
+    }
+}
+
+/// Relaie la fin d'un enregistrement (appelée hors fil principal) vers le main actor.
+private final class FinishedRelay {
+    var handler: ((URL?) -> Void)?
+
+    nonisolated func send(_ url: URL?) {
+        Task { @MainActor in self.handler?(url) }
     }
 }

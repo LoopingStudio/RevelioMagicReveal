@@ -4,6 +4,7 @@ import SwiftUI
 struct DebugPanel: View {
     let engine: RevealEngine
     let settings: RevealSettings
+    let inputs: InputCoordinator
 
     @State private var shakeTask: Task<Void, Never>?
 
@@ -18,6 +19,10 @@ struct DebugPanel: View {
             case .blow:
                 MicMeter(levelDB: engine.blowLevelDB, thresholdDB: Float(settings.blowThresholdDB))
                 Gauge(label: "Souffle", value: engine.blowStrength)
+                BlowSignatureReadout(features: engine.blowFeatures, classifier: engine.blowClassifier,
+                                     signatureMode: settings.blowSignature, gateOpen: engine.blowGateOpen,
+                                     microphoneName: inputs.microphoneName)
+                BlowRecordingControls(inputs: inputs)
             case .shake:
                 Gauge(label: "Dernière secousse", value: engine.lastShakeStrength)
             case .scratch:
@@ -118,6 +123,76 @@ private struct Gauge: View {
                 }
             }
             .frame(height: 6)
+        }
+    }
+}
+
+/// Les trois mesures qui décident « souffle ou pas », comparées à leurs seuils.
+private struct BlowSignatureReadout: View {
+    let features: BlowFeatures
+    let classifier: BlowClassifier
+    let signatureMode: Bool
+    let gateOpen: Bool
+    let microphoneName: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 10) {
+                criterion("Harmon.", value: String(format: "%.2f", features.harmonicity),
+                          ok: features.harmonicity <= classifier.maxHarmonicity)
+                criterion("Graves", value: "\(Int(features.lowRatio * 100)) %", ok: features.lowRatio >= classifier.minLowRatio)
+                criterion("Aigus", value: "\(Int(features.highRatio * 100)) %", ok: features.highRatio <= classifier.maxHighRatio)
+            }
+            Text(verdict)
+                .foregroundStyle(gateOpen ? Palette.gold : Palette.cream.opacity(0.7))
+        }
+    }
+
+    private var verdict: String {
+        let mic = microphoneName.isEmpty ? "" : " · micro \(microphoneName)"
+        guard signatureMode else { return "Mode volume seul\(mic)" }
+        return (gateOpen ? "Souffle reconnu" : "Pas un souffle") + mic
+    }
+
+    private func criterion(_ name: String, value: String, ok: Bool) -> some View {
+        HStack(spacing: 3) {
+            Image(systemName: ok ? "checkmark.circle.fill" : "xmark.circle")
+                .foregroundStyle(ok ? Palette.gold : Palette.cream.opacity(0.5))
+            Text("\(name) \(value)")
+        }
+    }
+}
+
+/// Enregistrements étiquetés de 5 s pour régler la détection, et partage des fichiers.
+private struct BlowRecordingControls: View {
+    let inputs: InputCoordinator
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if let label = inputs.recordingLabel {
+                Label("Enregistrement « \(label.title) » en cours (5 s)…", systemImage: "record.circle")
+                    .foregroundStyle(Palette.berry)
+                    .symbolEffect(.pulse)
+            } else {
+                Text("Enregistrer 5 s :")
+            }
+            HStack(spacing: 6) {
+                ForEach(BlowRecorder.Label.allCases, id: \.self) { label in
+                    Button(label.title) { inputs.record(label) }
+                        .buttonStyle(.glass)
+                        .disabled(inputs.recordingLabel != nil || inputs.microphone != .listening)
+                }
+            }
+            if !inputs.recordings.isEmpty {
+                HStack(spacing: 6) {
+                    ShareLink(items: inputs.recordings) {
+                        Label("Partager (\(inputs.recordings.count / 2))", systemImage: "square.and.arrow.up")
+                    }
+                    .buttonStyle(.glass)
+                    Button("Effacer", role: .destructive) { inputs.deleteRecordings() }
+                        .buttonStyle(.glass)
+                }
+            }
         }
     }
 }

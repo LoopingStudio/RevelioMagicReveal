@@ -50,6 +50,11 @@ final class RevealEngine {
     // Lectures du mode debug.
     private(set) var blowLevelDB: Float = -120
     private(set) var blowStrength: Float = 0
+    private(set) var blowFeatures = BlowFeatures()
+    /// Mode signature : la porte est ouverte (souffle reconnu et soutenu).
+    private(set) var blowGateOpen = false
+    /// Seuils du mode signature (lus par le mode debug et les enregistrements).
+    var blowClassifier: BlowClassifier { blowGate.classifier }
     private(set) var lastShakeStrength: Float = 0
 
     @ObservationIgnored private(set) var field: CoverageField
@@ -72,6 +77,7 @@ final class RevealEngine {
     @ObservationIgnored private var shakeTarget: Float = 0
     @ObservationIgnored private var lastShakeDirection = SIMD2<Float>(0, 1)
     @ObservationIgnored private var blowAnalyzer: BlowAnalyzer
+    @ObservationIgnored private var blowGate = BlowGate()
     @ObservationIgnored private var lastScratch: (point: SIMD2<Float>, time: TimeInterval)?
     @ObservationIgnored private var scratchSpeed: Float = 0
     @ObservationIgnored private var finishElapsed: Float = 0
@@ -112,6 +118,7 @@ final class RevealEngine {
         pendingEvents.removeAll()
         particles.removeAll()
         blowAnalyzer.reset()
+        blowGate.reset()
         phase = .covered
         revealed = 0
         feedback.reset()
@@ -157,11 +164,24 @@ final class RevealEngine {
         feedback.scratchEnded()
     }
 
-    /// Niveau micro brut, appelé ~50 fois par seconde par le moniteur micro.
-    func microphoneLevel(_ db: Float, dt: Float) {
-        blowLevelDB = db
-        blowAnalyzer.thresholdDB = Float(settings.blowThresholdDB)
-        let strength = blowAnalyzer.process(levelDB: db, dt: dt)
+    /// Mesures d'un bloc micro (~40 ms), appelé ~25 fois par seconde par le moniteur micro.
+    /// En mode signature, seul un son qui ressemble à un souffle soutenu fait monter l'intensité.
+    func microphoneFrame(_ features: BlowFeatures, dt: Float) {
+        if features.levelDB != blowLevelDB { blowLevelDB = features.levelDB }
+        if features != blowFeatures { blowFeatures = features }
+        let threshold = Float(settings.blowThresholdDB)
+        let level: Float
+        switch settings.blowMode {
+        case .level:
+            level = features.levelDB
+            if blowGateOpen { blowGateOpen = false }
+        case .signature:
+            let open = blowGate.process(features, thresholdDB: threshold, dt: dt)
+            if open != blowGateOpen { blowGateOpen = open }
+            level = open ? features.levelDB : -120
+        }
+        blowAnalyzer.thresholdDB = threshold
+        let strength = blowAnalyzer.process(levelDB: level, dt: dt)
         if strength != blowStrength { blowStrength = strength }
     }
 

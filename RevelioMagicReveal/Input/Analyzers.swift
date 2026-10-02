@@ -76,3 +76,60 @@ struct ShakeAnalyzer: Sendable {
 func screenVector(fromDevice v: SIMD3<Float>) -> SIMD2<Float> {
     SIMD2(v.x, -v.y)
 }
+
+/// Seuils qui disent si un bloc ressemble à un souffle plutôt qu'à la voix.
+/// Valeurs de départ à régler avec des enregistrements réels (mode debug).
+nonisolated struct BlowClassifier: Equatable, Sendable {
+    /// Au-dessus, le bloc a une hauteur de note : voyelle, chant, musique.
+    var maxHarmonicity: Float = 0.5
+    /// En dessous, pas assez de grondement d'air : chuchotement, sifflante, bruit lointain.
+    var minLowRatio: Float = 0.3
+    /// Au-dessus, sifflante (« sss », « chhh ») plutôt que souffle.
+    var maxHighRatio: Float = 0.3
+    /// Durée minimale de blocs « souffle » consécutifs avant d'ouvrir : écarte claquements et plosives.
+    var minDuration: Float = 0.12
+    /// Tolérance de blocs « non souffle » avant de refermer.
+    var releaseDuration: Float = 0.15
+
+    func isBlowLike(_ f: BlowFeatures, thresholdDB: Float) -> Bool {
+        f.levelDB >= thresholdDB && f.harmonicity <= maxHarmonicity && f.lowRatio >= minLowRatio && f.highRatio <= maxHighRatio
+    }
+}
+
+extension BlowAnalyzer {
+    enum Mode: String, CaseIterable, Sendable {
+        /// Tout son assez fort compte (premier comportement).
+        case level
+        /// Seul un son qui a la signature d'un souffle compte.
+        case signature
+    }
+}
+
+/// Porte temporelle du mode signature : il faut un souffle soutenu pour ouvrir.
+nonisolated struct BlowGate: Sendable {
+    var classifier = BlowClassifier()
+    private(set) var isOpen = false
+    private(set) var lastBlowLike = false
+    private var blowLikeTime: Float = 0
+    private var otherTime: Float = 0
+
+    mutating func process(_ f: BlowFeatures, thresholdDB: Float, dt: Float) -> Bool {
+        lastBlowLike = classifier.isBlowLike(f, thresholdDB: thresholdDB)
+        if lastBlowLike {
+            blowLikeTime += dt
+            otherTime = 0
+        } else {
+            otherTime += dt
+            if otherTime >= classifier.releaseDuration { blowLikeTime = 0 }
+        }
+        isOpen = blowLikeTime >= classifier.minDuration && otherTime < classifier.releaseDuration
+        return isOpen
+    }
+
+    mutating func reset() {
+        isOpen = false
+        lastBlowLike = false
+        blowLikeTime = 0
+        otherTime = 0
+    }
+}

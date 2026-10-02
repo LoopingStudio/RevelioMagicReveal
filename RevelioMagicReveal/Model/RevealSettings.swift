@@ -10,6 +10,10 @@ final class RevealSettings {
     // Souffler
     var blowThresholdDB: Double { didSet { save(blowThresholdDB, .blowThresholdDB) } }
     var blowSpeed: Double { didSet { save(blowSpeed, .blowSpeed) } }
+    /// Vrai : seul un son qui a la signature d'un souffle compte. Faux : tout son assez fort.
+    var blowSignature: Bool { didSet { save(blowSignature, .blowSignature) } }
+    /// Micro intégré utilisé pour le souffle (`MicSource.rawValue`).
+    var micSource: String { didSet { save(micSource, .micSource) } }
     // Secouer
     var shakeThresholdG: Double { didSet { save(shakeThresholdG, .shakeThresholdG) } }
     var shakeSpeed: Double { didSet { save(shakeSpeed, .shakeSpeed) } }
@@ -24,7 +28,7 @@ final class RevealSettings {
     @ObservationIgnored private let defaults: UserDefaults
 
     enum Key: String, CaseIterable {
-        case brushRadius, scratchStrength, blowThresholdDB, blowSpeed, shakeThresholdG, shakeSpeed
+        case brushRadius, scratchStrength, blowThresholdDB, blowSpeed, blowSignature, micSource, shakeThresholdG, shakeSpeed
         case autoFinishThreshold, hapticsEnabled, soundEnabled, debugOverlay
     }
 
@@ -33,6 +37,8 @@ final class RevealSettings {
         .scratchStrength: 0.75,
         .blowThresholdDB: -26.0,
         .blowSpeed: 1.0,
+        .blowSignature: true,
+        .micSource: "auto",
         .shakeThresholdG: 1.1,
         .shakeSpeed: 1.0,
         .autoFinishThreshold: 0.7,
@@ -48,6 +54,8 @@ final class RevealSettings {
         scratchStrength = defaults.double(forKey: Key.scratchStrength.rawValue)
         blowThresholdDB = defaults.double(forKey: Key.blowThresholdDB.rawValue)
         blowSpeed = defaults.double(forKey: Key.blowSpeed.rawValue)
+        blowSignature = defaults.bool(forKey: Key.blowSignature.rawValue)
+        micSource = defaults.string(forKey: Key.micSource.rawValue) ?? "auto"
         shakeThresholdG = defaults.double(forKey: Key.shakeThresholdG.rawValue)
         shakeSpeed = defaults.double(forKey: Key.shakeSpeed.rawValue)
         autoFinishThreshold = defaults.double(forKey: Key.autoFinishThreshold.rawValue)
@@ -63,6 +71,8 @@ final class RevealSettings {
         scratchStrength = fresh.scratchStrength
         blowThresholdDB = fresh.blowThresholdDB
         blowSpeed = fresh.blowSpeed
+        blowSignature = fresh.blowSignature
+        micSource = fresh.micSource
         shakeThresholdG = fresh.shakeThresholdG
         shakeSpeed = fresh.shakeSpeed
         autoFinishThreshold = fresh.autoFinishThreshold
@@ -70,6 +80,9 @@ final class RevealSettings {
         soundEnabled = fresh.soundEnabled
         debugOverlay = fresh.debugOverlay
     }
+
+    var blowMode: BlowAnalyzer.Mode { blowSignature ? .signature : .level }
+    var mic: MicSource { MicSource(rawValue: micSource) ?? .auto }
 
     private func save(_ value: Any, _ key: Key) {
         defaults.set(value, forKey: key.rawValue)
