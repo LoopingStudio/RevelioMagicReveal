@@ -40,9 +40,6 @@ final class FeedbackCenter {
     private var chunkGate = ImpulseGate(threshold: 60, minInterval: 0.06)
     private var whooshGate = ImpulseGate(threshold: 80, minInterval: 0.15)
 
-    // Son + vibrations déduites
-    private var audioDrivenPlayer: AVAudioPlayer?
-
     /// Surveille les textures continues : doigt immobile, souffle qui ne vient plus, lecteurs à éteindre.
     private var watchdog: Task<Void, Never>?
 
@@ -190,25 +187,22 @@ final class FeedbackCenter {
         if soundEnabled { sound.playJingle() }
     }
 
-    /// Joue un fichier audio et les vibrations déduites de son analyse, calées sur la même horloge :
-    /// les deux démarrent après le même court délai, le temps que l'audio soit prêt.
+    /// Joue le fichier audio tel quel, avec par-dessus les vibrations déduites de son analyse, sur un
+    /// même départ : l'audio est programmé à une heure hôte absolue, les vibrations au même délai sur
+    /// l'horloge haptique. Tout l'audio passe par la file du moteur audio (rien sur le fil principal).
     func playAudioDriven(url: URL, analysis: HeartbeatAnalyzer.Analysis) {
-        guard prepared else { return }
+        guard prepared, analysis.duration > 0 else { return }
         stopAudioDriven()
         endContinuousFeedback()
-        let delay = 0.15
-        if soundEnabled, let player = try? AVAudioPlayer(contentsOf: url) {
-            player.volume = 1
-            player.prepareToPlay()
-            player.play(atTime: player.deviceCurrentTime + delay)
-            audioDrivenPlayer = player
+        let delay = 0.2
+        if soundEnabled {
+            sound.playFile(at: url, atHostTime: mach_absolute_time() + AVAudioTime.hostTime(forSeconds: delay))
         }
         if hapticsEnabled { haptics.playAudioDriven(HapticScripts.audioDriven(analysis), delay: delay) }
     }
 
     func stopAudioDriven() {
-        audioDrivenPlayer?.stop()
-        audioDrivenPlayer = nil
+        sound.stopPlayback()
         haptics.stopAudioDriven()
     }
 

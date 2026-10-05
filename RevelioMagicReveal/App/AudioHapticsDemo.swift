@@ -49,7 +49,8 @@ final class AudioHapticsDemo {
         stop()
         state = .analyzing
         task = Task {
-            // L'analyse (décodage, filtrage, détection) se fait hors du fil principal.
+            // L'analyse (décodage, filtrage, détection) se fait hors du fil principal ; on joue ensuite le
+            // vrai fichier, avec les vibrations par-dessus.
             let analysis = await Task.detached(priority: .userInitiated) {
                 try? HeartbeatAnalyzer.analyze(fileAt: url)
             }.value

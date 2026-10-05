@@ -60,6 +60,16 @@ final class ProceduralSound {
         output.playJingle()
     }
 
+    /// Le fichier audio tel quel, démarré à l'heure hôte donnée (même départ que les vibrations).
+    func playFile(at url: URL, atHostTime hostTime: UInt64) {
+        restartIfNeeded()
+        output.playFile(at: url, atHostTime: hostTime)
+    }
+
+    func stopPlayback() {
+        output.stopPlayback()
+    }
+
     func allowHapticsDuringRecording() {
         output.allowHapticsDuringRecording()
     }
@@ -92,6 +102,8 @@ nonisolated final class AudioOutput: @unchecked Sendable {
     private var chimeRequested = false
     /// Jingle Bells au glockenspiel (~13 s), calculé à l'avance pour partir en même temps que l'haptique.
     private var jingleBuffer: AVAudioPCMBuffer?
+    /// Lecteur des fichiers audio dont on déduit les vibrations (rebranché au format de chaque fichier).
+    private var fileNode: AVAudioPlayerNode?
     private var engineObservers: [NSObjectProtocol] = []
     private var sessionObservers: [NSObjectProtocol] = []
     private let chimeFormat = AVAudioFormat(standardFormatWithSampleRate: ChimeSynth.sampleRate, channels: 2)
@@ -135,6 +147,27 @@ nonisolated final class AudioOutput: @unchecked Sendable {
             chimeNode.scheduleBuffer(chimeBuffer, at: nil)
             chimeNode.play()
         }
+    }
+
+    /// Lit le fichier lui-même (décodé par AVAudioFile, sans retouche), sur un lecteur dédié branché au
+    /// format du fichier, à l'heure hôte donnée.
+    func playFile(at url: URL, atHostTime hostTime: UInt64) {
+        queue.async { [self] in
+            if engine?.isRunning != true { startEngine() }
+            guard let engine, engine.isRunning, let file = try? AVAudioFile(forReading: url) else { return }
+            fileNode?.stop()
+            if let old = fileNode { engine.detach(old) }
+            let node = AVAudioPlayerNode()
+            engine.attach(node)
+            engine.connect(node, to: engine.mainMixerNode, format: file.processingFormat)
+            fileNode = node
+            node.scheduleFile(file, at: nil)
+            node.play(at: AVAudioTime(hostTime: hostTime))
+        }
+    }
+
+    func stopPlayback() {
+        queue.async { [self] in fileNode?.stop() }
     }
 
     func playJingle() {
@@ -212,6 +245,7 @@ nonisolated final class AudioOutput: @unchecked Sendable {
         engineObservers.removeAll()
         engine = nil
         chimeNode = nil
+        fileNode = nil
     }
 
     /// Le rendu tourne sur le thread temps réel : le bloc ne fait que déléguer au `SynthRenderer`
