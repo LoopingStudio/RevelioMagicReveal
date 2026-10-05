@@ -126,24 +126,40 @@ nonisolated final class MicrophoneMonitor: @unchecked Sendable {
         isRunning = true
     }
 
-    /// Choisit le micro intégré demandé ; « Automatique » laisse le choix au système. « Haut + bas »
-    /// demande la capture stéréo (deux micros) quand l'appareil la propose, sinon reste en mono.
+    /// Choisit le micro intégré demandé. « Haut + bas » demande la capture stéréo (deux micros) ; si
+    /// iOS ne l'accorde pas, on revient au micro du bas, celui sur lequel la détection a été réglée.
+    /// « Automatique » rend la main au système (en effaçant un éventuel choix précédent).
     private func selectBuiltInMic(_ source: MicSource, in session: AVAudioSession) {
         guard let builtIn = session.availableInputs?.first(where: { $0.portType == .builtInMic }) else { return }
         try? session.setPreferredInput(builtIn)
-        if source == .both {
-            guard let stereo = builtIn.dataSources?.first(where: { $0.supportedPolarPatterns?.contains(.stereo) == true }) else { return }
-            try? stereo.setPreferredPolarPattern(.stereo)
-            try? builtIn.setPreferredDataSource(stereo)
-            try? session.setPreferredInputOrientation(.portrait)
-            // Le passage en stéréo est asynchrone : tant qu'il n'est pas fait, le maximum de canaux
-            // reste à 1 et une demande de 2 canaux est refusée. On attend jusqu'à ~0,5 s.
-            for _ in 0..<10 where session.maximumInputNumberOfChannels < 2 {
-                usleep(50_000)
+        switch source {
+        case .both:
+            if let stereo = builtIn.dataSources?.first(where: { $0.supportedPolarPatterns?.contains(.stereo) == true }) {
+                try? stereo.setPreferredPolarPattern(.stereo)
+                try? builtIn.setPreferredDataSource(stereo)
+                try? session.setPreferredInputOrientation(.portrait)
+                // Le passage en stéréo est asynchrone : tant qu'il n'est pas fait, le maximum de canaux
+                // reste à 1 et une demande de 2 canaux est refusée. On attend jusqu'à ~0,5 s.
+                for _ in 0..<10 where session.maximumInputNumberOfChannels < 2 {
+                    usleep(50_000)
+                }
+                if session.maximumInputNumberOfChannels >= 2 {
+                    try? session.setPreferredInputNumberOfChannels(2)
+                    return
+                }
             }
-            try? session.setPreferredInputNumberOfChannels(2)
-            return
+            // Stéréo refusée : rester sur le micro stéréo (souvent l'avant ou l'arrière) en mono rendrait
+            // sourd au souffle dans le micro du bas.
+            selectMono(.bottom, of: builtIn, in: session)
+        case .auto:
+            try? session.setPreferredInputNumberOfChannels(1)
+            try? builtIn.setPreferredDataSource(nil)
+        case .bottom, .front, .back:
+            selectMono(source, of: builtIn, in: session)
         }
+    }
+
+    private func selectMono(_ source: MicSource, of builtIn: AVAudioSessionPortDescription, in session: AVAudioSession) {
         try? session.setPreferredInputNumberOfChannels(1)
         guard let orientation = source.orientation,
               let dataSource = builtIn.dataSources?.first(where: { $0.orientation == orientation }) else { return }

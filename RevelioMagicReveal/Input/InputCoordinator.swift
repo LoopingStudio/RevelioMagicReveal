@@ -75,7 +75,7 @@ final class InputCoordinator {
             }
             microphone = .listening
             let stereoRefused = settings.mic == .both && mic.channelCount < 2
-            microphoneName = stereoRefused ? mic.sourceName + " · stéréo refusée" : mic.sourceName
+            microphoneName = stereoRefused ? mic.sourceName + " · stéréo refusée, micro du bas" : mic.sourceName
         } catch {
             microphone = .unavailable
         }
