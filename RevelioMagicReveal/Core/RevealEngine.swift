@@ -51,7 +51,7 @@ final class RevealEngine {
     private(set) var blowLevelDB: Float = -120
     private(set) var blowStrength: Float = 0
     private(set) var blowFeatures = BlowFeatures()
-    /// Niveau de chaque canal du micro (un en mono, deux en stéréo) et canal suivi.
+    /// Niveau de chaque canal du micro et canal suivi (un seul canal aujourd'hui : micro du bas).
     private(set) var blowChannelLevels: [Float] = []
     private(set) var blowChannel = 0
     /// Mode signature : la porte est ouverte (souffle reconnu et soutenu).

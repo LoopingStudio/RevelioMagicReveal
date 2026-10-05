@@ -98,14 +98,34 @@ nonisolated struct BlowClassifier: Equatable, Sendable {
     /// Tolérance de blocs « non souffle » avant de refermer (pointes d'harmonicité pendant un souffle).
     var releaseDuration: Float = 0.18
 
+    // Souffle direct, collé au micro : très fort, il peut saturer, et la distorsion fait monter le centre du
+    // spectre et les aigus. D'où des critères spectraux plus larges, réservés aux blocs très forts (la voix
+    // n'a pas dépassé −38 dB dans les prises réelles, même de près). L'harmonicité reste exigée : une voix
+    // criée et saturée garde une hauteur de note (harmonicité ≈ 1) et doit rester rejetée.
+    /// Niveau à partir duquel la voie « souffle direct » s'applique (indépendant du curseur de seuil).
+    var directMinLevelDB: Float = -20
+    var directMinLowRatio: Float = 0.6
+    var directMaxHighRatio: Float = 0.15
+    var directMaxCentroidHz: Float = 400
+    var directMaxHarmonicity: Float = 0.7
+
     func isBlowLike(_ f: BlowFeatures, thresholdDB: Float) -> Bool {
+        isNormalBlow(f, thresholdDB: thresholdDB) || isDirectBlow(f)
+    }
+
+    func isNormalBlow(_ f: BlowFeatures, thresholdDB: Float) -> Bool {
         f.levelDB >= thresholdDB && f.harmonicity <= maxHarmonicity && f.lowRatio >= minLowRatio
             && f.highRatio <= maxHighRatio && f.centroidHz <= maxCentroidHz
     }
+
+    func isDirectBlow(_ f: BlowFeatures) -> Bool {
+        f.levelDB >= directMinLevelDB && f.lowRatio >= directMinLowRatio && f.highRatio <= directMaxHighRatio
+            && f.centroidHz <= directMaxCentroidHz && f.harmonicity <= directMaxHarmonicity
+    }
 }
 
-/// En stéréo, deux canaux (micro du bas et micro du haut) : on suit celui qui ressemble le plus à un
-/// souffle, à défaut le plus fort. On peut ainsi souffler vers le haut ou vers le bas de l'iPhone.
+/// Avec plusieurs canaux, on suit celui qui ressemble le plus à un souffle, à défaut le plus fort.
+/// (Le mode « mesure » limite aujourd'hui la capture à un seul canal, le micro du bas.)
 nonisolated enum BlowChannelChooser {
     static func choose(_ channels: [BlowFeatures], classifier: BlowClassifier, thresholdDB: Float) -> Int {
         var best = -1

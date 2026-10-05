@@ -18,6 +18,7 @@ p.add_argument("--aigus", type=float, default=0.05)
 p.add_argument("--centre", type=float, default=200)
 p.add_argument("--duree", type=float, default=0.12)
 p.add_argument("--tolerance", type=float, default=0.18)
+p.add_argument("--direct", type=float, default=-20, help="niveau de la voie « souffle direct » (dB)")
 a = p.parse_args()
 
 def load(path):
@@ -36,6 +37,9 @@ for path in a.fichiers:
     for r in rows:
         like = (r["levelDB"] >= a.seuil and r["harmonicity"] <= a.harmonicite and r["lowRatio"] >= a.graves
                 and r["highRatio"] <= a.aigus and r["centroidHz"] <= a.centre)
+        # Voie « souffle direct » (même logique que BlowClassifier.isDirectBlow).
+        like = like or (r["levelDB"] >= a.direct and r["lowRatio"] >= 0.6 and r["highRatio"] <= 0.15
+                        and r["centroidHz"] <= 400 and r["harmonicity"] <= 0.7)
         like_n += like
         # Même hystérésis que BlowGate : blocs consécutifs pour ouvrir, tolérance pour refermer.
         if is_open:

@@ -166,7 +166,10 @@ private struct BlowSignatureReadout: View {
     private var verdict: String {
         let mic = microphoneName.isEmpty ? "" : " · micro \(microphoneName)"
         guard signatureMode else { return "Mode volume seul\(mic)" }
-        return (gateOpen ? "Souffle reconnu" : "Pas un souffle") + mic
+        guard gateOpen else { return "Pas un souffle" + mic }
+        let direct = classifier.isDirectBlow(features) ? "Souffle direct reconnu" : "Souffle reconnu"
+        let clip = features.clipRatio > 0 ? String(format: " · saturé %.0f %%", features.clipRatio * 100) : ""
+        return direct + clip + mic
     }
 
     private func criterion(_ name: String, value: String, ok: Bool) -> some View {

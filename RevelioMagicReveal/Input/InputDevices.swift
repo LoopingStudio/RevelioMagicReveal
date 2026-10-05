@@ -4,30 +4,6 @@ import Foundation
 import UIKit
 import os
 
-/// Micro intégré à utiliser : l'iPhone en a un en bas, un à l'avant (écouteur) et un à l'arrière.
-nonisolated enum MicSource: String, CaseIterable, Sendable {
-    case both, auto, bottom, front, back
-
-    var title: String {
-        switch self {
-        case .both: "Haut + bas (stéréo)"
-        case .auto: "Automatique"
-        case .bottom: "Bas"
-        case .front: "Avant"
-        case .back: "Arrière"
-        }
-    }
-
-    var orientation: AVAudioSession.Orientation? {
-        switch self {
-        case .both, .auto: nil
-        case .bottom: .bottom
-        case .front: .front
-        case .back: .back
-        }
-    }
-}
-
 /// Analyse le micro par blocs (~40 ms) et livre leurs mesures sur le main actor.
 ///
 /// L'activation de la session et le démarrage du moteur audio peuvent bloquer plusieurs secondes
@@ -38,7 +14,7 @@ nonisolated final class MicrophoneMonitor: @unchecked Sendable {
 
     /// Seule file qui touche `audioEngine` et `isRunning`.
     private let queue = DispatchQueue(label: "RevelioMagicReveal.microphone", qos: .userInitiated)
-    /// Recréé à chaque démarrage : passer de mono à stéréo change le format matériel de l'entrée.
+    /// Recréé à chaque démarrage : le format matériel de l'entrée peut changer d'une fois sur l'autre.
     private var audioEngine = AVAudioEngine()
     private var isRunning = false
     private let onFrame: @MainActor @Sendable (_ channels: [BlowFeatures], _ dt: Float) -> Void
@@ -63,14 +39,13 @@ nonisolated final class MicrophoneMonitor: @unchecked Sendable {
     /// enregistrements pour comprendre ce qu'iOS a accordé.
     var diagnostic: String { diagnosticLock.withLock { $0 } }
 
-    /// 2 quand la capture stéréo (bas + haut) a été accordée par le système, 1 sinon.
     var channelCount: Int { live.withLock { $0.channels } }
 
-    func start(source: MicSource) async throws {
+    func start() async throws {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             queue.async {
                 do {
-                    try self.startOnQueue(source: source)
+                    try self.startOnQueue()
                     continuation.resume()
                 } catch {
                     continuation.resume(throwing: error)
@@ -83,7 +58,7 @@ nonisolated final class MicrophoneMonitor: @unchecked Sendable {
         queue.async { self.stopOnQueue() }
     }
 
-    private func startOnQueue(source: MicSource) throws {
+    private func startOnQueue() throws {
         guard !isRunning else { return }
         let session = AVAudioSession.sharedInstance()
         // Même configuration que la sortie audio (Feedback/ProceduralSound) : souvent déjà en place.
@@ -92,15 +67,14 @@ nonisolated final class MicrophoneMonitor: @unchecked Sendable {
             try session.setCategory(.playAndRecord, mode: .measurement, options: options)
         }
         try session.setActive(true)
-        selectBuiltInMic(source, in: session)
+        selectBottomMic(in: session)
 
         audioEngine = AVAudioEngine()
         let input = audioEngine.inputNode
         let format = input.outputFormat(forBus: 0)
         guard format.sampleRate > 0, format.channelCount > 0 else { throw Failure.noInput }
         let channels = min(2, Int(format.channelCount))
-        let baseName = session.inputDataSource?.dataSourceName ?? session.currentRoute.inputs.first?.portName ?? "?"
-        let sourceName = channels == 2 ? baseName + " · stéréo" : baseName
+        let sourceName = session.inputDataSource?.dataSourceName ?? session.currentRoute.inputs.first?.portName ?? "?"
         let dataSource = session.inputDataSource
         let diagnostic = "mode=\(session.mode.rawValue) source=\(dataSource?.dataSourceName ?? "?") "
             + "polaire=\(dataSource?.selectedPolarPattern?.rawValue ?? "?") "
@@ -126,47 +100,18 @@ nonisolated final class MicrophoneMonitor: @unchecked Sendable {
         isRunning = true
     }
 
-    /// Choisit le micro intégré demandé. « Haut + bas » demande la capture stéréo (deux micros) ; si
-    /// iOS ne l'accorde pas, on revient au micro du bas, celui sur lequel la détection a été réglée.
-    /// « Automatique » rend la main au système (en effaçant un éventuel choix précédent).
-    private func selectBuiltInMic(_ source: MicSource, in session: AVAudioSession) {
+    /// Micro du bas, omnidirectionnel, en mono. En mode « mesure », iOS n'utilise de toute façon que le
+    /// micro principal quand l'appareil en a plusieurs (doc Apple de `AVAudioSession.Mode.measurement`) :
+    /// pas de stéréo ni de micro du haut possibles, et la détection est réglée sur ce micro-là.
+    private func selectBottomMic(in session: AVAudioSession) {
         guard let builtIn = session.availableInputs?.first(where: { $0.portType == .builtInMic }) else { return }
         try? session.setPreferredInput(builtIn)
-        switch source {
-        case .both:
-            if let stereo = builtIn.dataSources?.first(where: { $0.supportedPolarPatterns?.contains(.stereo) == true }) {
-                try? stereo.setPreferredPolarPattern(.stereo)
-                try? builtIn.setPreferredDataSource(stereo)
-                try? session.setPreferredInputOrientation(.portrait)
-                // Le passage en stéréo est asynchrone : tant qu'il n'est pas fait, le maximum de canaux
-                // reste à 1 et une demande de 2 canaux est refusée. On attend jusqu'à ~0,5 s.
-                for _ in 0..<10 where session.maximumInputNumberOfChannels < 2 {
-                    usleep(50_000)
-                }
-                if session.maximumInputNumberOfChannels >= 2 {
-                    try? session.setPreferredInputNumberOfChannels(2)
-                    return
-                }
-            }
-            // Stéréo refusée : rester sur le micro stéréo (souvent l'avant ou l'arrière) en mono rendrait
-            // sourd au souffle dans le micro du bas.
-            selectMono(.bottom, of: builtIn, in: session)
-        case .auto:
-            try? session.setPreferredInputNumberOfChannels(1)
-            try? builtIn.setPreferredDataSource(nil)
-        case .bottom, .front, .back:
-            selectMono(source, of: builtIn, in: session)
-        }
-    }
-
-    private func selectMono(_ source: MicSource, of builtIn: AVAudioSessionPortDescription, in session: AVAudioSession) {
         try? session.setPreferredInputNumberOfChannels(1)
-        guard let orientation = source.orientation,
-              let dataSource = builtIn.dataSources?.first(where: { $0.orientation == orientation }) else { return }
-        if dataSource.supportedPolarPatterns?.contains(.omnidirectional) == true {
-            try? dataSource.setPreferredPolarPattern(.omnidirectional)
+        guard let bottom = builtIn.dataSources?.first(where: { $0.orientation == .bottom }) else { return }
+        if bottom.supportedPolarPatterns?.contains(.omnidirectional) == true {
+            try? bottom.setPreferredPolarPattern(.omnidirectional)
         }
-        try? builtIn.setPreferredDataSource(dataSource)
+        try? builtIn.setPreferredDataSource(bottom)
     }
 
     private func stopOnQueue() {

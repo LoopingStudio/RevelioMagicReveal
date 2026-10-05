@@ -149,7 +149,7 @@ nonisolated final class BlowRecorder: @unchecked Sendable {
             let c = take.context.classifier
             var csv = """
             # étiquette=\(take.context.label.rawValue) micro=\(take.context.micSource) fréquence=\(Int(take.sampleRate)) Hz
-            # seuilDB=\(take.context.thresholdDB) maxHarmonicity=\(c.maxHarmonicity) minLowRatio=\(c.minLowRatio) maxHighRatio=\(c.maxHighRatio) maxCentroidHz=\(c.maxCentroidHz) minDuration=\(c.minDuration) releaseDuration=\(c.releaseDuration)
+            # seuilDB=\(take.context.thresholdDB) maxHarmonicity=\(c.maxHarmonicity) minLowRatio=\(c.minLowRatio) maxHighRatio=\(c.maxHighRatio) maxCentroidHz=\(c.maxCentroidHz) directMinLevelDB=\(c.directMinLevelDB) minDuration=\(c.minDuration) releaseDuration=\(c.releaseDuration)
             # session : \(take.context.audioDiagnostic)
             # canaux=\(channels) (colonnes principales = canal suivi « canal » ; détail par canal en _c0, _c1)
             t,\(BlowFeatures.csvHeader),blowLike,gateOpen,canal\(perChannelHeader(channels))

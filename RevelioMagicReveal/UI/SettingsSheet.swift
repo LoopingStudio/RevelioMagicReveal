@@ -21,11 +21,6 @@ struct SettingsSheet: View {
                         Text("Signature du souffle").tag(true)
                         Text("Volume seul").tag(false)
                     }
-                    Picker("Micro", selection: $settings.micSource) {
-                        ForEach(MicSource.allCases, id: \.rawValue) { source in
-                            Text(source.title).tag(source.rawValue)
-                        }
-                    }
                     SliderRow(title: "Seuil du micro", value: $settings.blowThresholdDB, range: -65 ... -20, step: 1) { "\(Int($0)) dB" }
                     SliderRow(title: "Vitesse", value: $settings.blowSpeed, range: 0.3...3, step: 0.1) { String(format: "×%.1f", $0) }
                 } header: {

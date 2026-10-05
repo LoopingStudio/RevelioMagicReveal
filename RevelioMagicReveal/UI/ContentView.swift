@@ -80,9 +80,6 @@ struct ContentView: View {
                 engine.reset()
             }
         }
-        .onChange(of: model.settings.micSource) {
-            Task { await model.inputs.restartMicrophone(for: engine.gesture) }
-        }
         .onChange(of: engine.phase) { _, phase in
             switch phase {
             case .revealed: model.media.playFromStart()
@@ -128,17 +125,6 @@ struct ContentView: View {
         .tint(Palette.cream)
     }
 
-    /// Pour le souffle, la consigne indique où se trouve le micro choisi.
-    private var hint: String {
-        guard engine.gesture == .blow else { return engine.gesture.hint }
-        switch model.settings.mic {
-        case .both: return "Souffle vers l'iPhone, en haut ou en bas"
-        case .auto, .bottom: return engine.gesture.hint
-        case .front: return "Souffle vers le haut de l'écran"
-        case .back: return "Souffle au dos, près de l'appareil photo"
-        }
-    }
-
     private var hintRow: some View {
         HStack(spacing: 12) {
             Group {
@@ -151,7 +137,7 @@ struct ContentView: View {
                 } else if engine.gesture == .blow, model.inputs.microphone == .unavailable {
                     Label("Micro indisponible", systemImage: "mic.slash")
                 } else {
-                    Label(hint, systemImage: engine.gesture.symbol)
+                    Label(engine.gesture.hint, systemImage: engine.gesture.symbol)
                 }
             }
             .font(.callout.weight(.medium))

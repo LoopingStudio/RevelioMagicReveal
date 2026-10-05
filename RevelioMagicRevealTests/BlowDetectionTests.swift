@@ -109,6 +109,39 @@ struct BlowClassifierTests {
         #expect(!classifier.isBlowLike(Signal.features(Signal.hiss(amplitude: 0.6)), thresholdDB: -30))
     }
 
+    /// Souffle collé au micro : on amplifie puis on écrête, comme un micro qui sature.
+    private func saturated(_ samples: [Float], gain: Float) -> BlowFeatures {
+        Signal.features(samples.map { max(-1, min(1, $0 * gain)) })
+    }
+
+    @Test func saturatedBlowStraightIntoTheMicIsStillABlow() {
+        let f = saturated(Signal.wind(amplitude: 1), gain: 4)
+        #expect(f.clipRatio > 0.05)
+        #expect(classifier.isBlowLike(f, thresholdDB: -45))
+    }
+
+    @Test func voiceShoutedIntoTheMicIsNotABlowEvenSaturated() {
+        for f0: Float in [120, 220] {
+            let f = saturated(Signal.vowel(f0: f0, amplitude: 1), gain: 4)
+            #expect(f.clipRatio > 0.05)
+            #expect(!classifier.isBlowLike(f, thresholdDB: -45), "voix \(f0) Hz")
+        }
+    }
+
+    @Test func directPathOnlyAppliesToVeryLoudSounds() {
+        // Spectre trop haut pour un souffle normal (centre 300 Hz), mais plausible pour un souffle saturé.
+        var f = BlowFeatures()
+        f.levelDB = -12
+        f.harmonicity = 0.5
+        f.lowRatio = 0.7
+        f.highRatio = 0.08
+        f.centroidHz = 300
+        #expect(!classifier.isNormalBlow(f, thresholdDB: -45))
+        #expect(classifier.isDirectBlow(f))
+        f.levelDB = -30
+        #expect(!classifier.isBlowLike(f, thresholdDB: -45))
+    }
+
     @Test func quietWindIsBelowThreshold() {
         #expect(!classifier.isBlowLike(Signal.features(Signal.wind(amplitude: 0.003)), thresholdDB: -30))
     }
@@ -304,6 +337,7 @@ struct StereoBlowTests {
         #expect(csv.contains("levelDB_c1"))
         // Colonne « canal » : le canal 1 (vent) est suivi.
         let firstRow = try #require(csv.split(separator: "\n").first { $0.hasPrefix("0.000,") })
-        #expect(firstRow.split(separator: ",")[11] == "1")
+        // t + 10 mesures + blowLike + gateOpen → « canal » est la 14ᵉ colonne.
+        #expect(firstRow.split(separator: ",")[13] == "1")
     }
 }

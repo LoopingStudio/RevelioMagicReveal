@@ -24,12 +24,16 @@ nonisolated struct BlowFeatures: Equatable, Sendable {
     var zeroCrossingRate: Float = 0
     /// Hauteur estimée (Hz) quand le bloc est assez harmonique, 0 sinon.
     var pitchHz: Float = 0
+    /// Crête du bloc (valeur absolue maximale, 1 = pleine échelle).
+    var peak: Float = 0
+    /// Part des échantillons écrêtés (|x| ≥ 0,98) : un souffle collé au micro sature.
+    var clipRatio: Float = 0
 
-    static let csvHeader = "levelDB,flatness,harmonicity,lowRatio,highRatio,centroidHz,zcr,pitchHz"
+    static let csvHeader = "levelDB,flatness,harmonicity,lowRatio,highRatio,centroidHz,zcr,pitchHz,peak,clipRatio"
 
     var csvRow: String {
-        String(format: "%.2f,%.4f,%.4f,%.4f,%.4f,%.1f,%.4f,%.1f",
-               levelDB, flatness, harmonicity, lowRatio, highRatio, centroidHz, zeroCrossingRate, pitchHz)
+        String(format: "%.2f,%.4f,%.4f,%.4f,%.4f,%.1f,%.4f,%.1f,%.4f,%.4f",
+               levelDB, flatness, harmonicity, lowRatio, highRatio, centroidHz, zeroCrossingRate, pitchHz, peak, clipRatio)
     }
 }
 
@@ -91,8 +95,16 @@ nonisolated final class BlowFeatureExtractor: @unchecked Sendable {
         features.levelDB = 20 * log10(max(meanSquare.squareRoot(), 1e-7))
 
         var crossings = 0
-        for i in 1..<n where (samples[i] >= 0) != (samples[i - 1] >= 0) { crossings += 1 }
+        var clipped = 0
+        for i in 0..<n {
+            if abs(samples[i]) >= 0.98 { clipped += 1 }
+            if i > 0, (samples[i] >= 0) != (samples[i - 1] >= 0) { crossings += 1 }
+        }
         features.zeroCrossingRate = Float(crossings) / Float(n)
+        features.clipRatio = Float(clipped) / Float(n)
+        var peak: Float = 0
+        vDSP_maxmgv(base, 1, &peak, vDSP_Length(n))
+        features.peak = peak
 
         // Spectre de puissance (fenêtre de Hann).
         vDSP_vmul(base, 1, window, 1, &windowed, 1, vDSP_Length(n))
