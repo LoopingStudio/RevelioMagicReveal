@@ -176,6 +176,16 @@ final class FeedbackCenter {
         if soundEnabled { sound.playChime() }
     }
 
+    // MARK: - Musique
+
+    /// Jingle Bells en vibrations, accompagné du glockenspiel si le son est activé.
+    func playJingleBells() {
+        guard prepared else { return }
+        endContinuousFeedback()
+        if hapticsEnabled { haptics.play(HapticScripts.melody()) }
+        if soundEnabled { sound.playJingle() }
+    }
+
     // MARK: - Interne
 
     private func endContinuousFeedback() {

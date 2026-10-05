@@ -30,7 +30,8 @@ nonisolated enum ChimeSynth {
         Partial(ratio: 8.933, amplitude: 0.07, decay: 0.05),
     ]
 
-    static func render(score: [CelebrationNote] = CelebrationScore.notes, sampleRate: Double = sampleRate) -> Samples {
+    static func render(score: [CelebrationNote] = CelebrationScore.notes, duration: Double = duration,
+                       sampleRate: Double = sampleRate) -> Samples {
         let count = Int(duration * sampleRate)
         var left = [Float](repeating: 0, count: count)
         var right = [Float](repeating: 0, count: count)

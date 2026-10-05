@@ -55,6 +55,11 @@ final class ProceduralSound {
         output.playChime()
     }
 
+    func playJingle() {
+        restartIfNeeded()
+        output.playJingle()
+    }
+
     func allowHapticsDuringRecording() {
         output.allowHapticsDuringRecording()
     }
@@ -85,6 +90,8 @@ nonisolated final class AudioOutput: @unchecked Sendable {
     private var chimeNode: AVAudioPlayerNode?
     private var chimeBuffer: AVAudioPCMBuffer?
     private var chimeRequested = false
+    /// Jingle Bells au glockenspiel (~13 s), calculé à l'avance pour partir en même temps que l'haptique.
+    private var jingleBuffer: AVAudioPCMBuffer?
     private var engineObservers: [NSObjectProtocol] = []
     private var sessionObservers: [NSObjectProtocol] = []
     private let chimeFormat = AVAudioFormat(standardFormatWithSampleRate: ChimeSynth.sampleRate, channels: 2)
@@ -126,6 +133,16 @@ nonisolated final class AudioOutput: @unchecked Sendable {
             // Arrêt puis relance : repart du début même si le nœud a gardé un état d'avant un redémarrage.
             chimeNode.stop()
             chimeNode.scheduleBuffer(chimeBuffer, at: nil)
+            chimeNode.play()
+        }
+    }
+
+    func playJingle() {
+        queue.async { [self] in
+            if engine?.isRunning != true { startEngine() }
+            guard let engine, let chimeNode, let jingleBuffer, engine.isRunning else { return }
+            chimeNode.stop()
+            chimeNode.scheduleBuffer(jingleBuffer, at: nil)
             chimeNode.play()
         }
     }
@@ -278,6 +295,8 @@ nonisolated final class AudioOutput: @unchecked Sendable {
         Task.detached(priority: .utility) { [self] in
             let samples = ChimeSynth.render()
             queue.async { self.chimeBuffer = self.makeBuffer(samples) }
+            let jingle = ChimeSynth.render(score: JingleBells.audioScore, duration: JingleBells.duration + 2)
+            queue.async { self.jingleBuffer = self.makeBuffer(jingle) }
         }
     }
 

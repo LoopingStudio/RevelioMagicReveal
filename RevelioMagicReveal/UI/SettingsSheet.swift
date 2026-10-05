@@ -6,6 +6,7 @@ struct SettingsSheet: View {
     let onFeedbackChange: () -> Void
     /// Le contenu a changé : on recouvre la carte.
     let onContentChange: () -> Void
+    let onPlayJingleBells: () -> Void
 
     @Environment(\.dismiss) private var dismiss
 
@@ -43,9 +44,15 @@ struct SettingsSheet: View {
                 } footer: {
                     Text("Au-delà de ce seuil, le reste du masque disparaît tout seul et la photo est célébrée.")
                 }
-                Section("Retours") {
+                Section {
                     Toggle("Haptique", isOn: $settings.hapticsEnabled)
                     Toggle("Son", isOn: $settings.soundEnabled)
+                    Button("Jouer Jingle Bells", systemImage: "music.note", action: onPlayJingleBells)
+                        .disabled(!settings.hapticsEnabled && !settings.soundEnabled)
+                } header: {
+                    Text("Retours")
+                } footer: {
+                    Text("La mélodie passe par le rythme, les accents et la netteté des vibrations. Coupe le son pour sentir l'haptique seule.")
                 }
                 Section("Contenu révélé") {
                     Button("Vidéo d'exemple") {

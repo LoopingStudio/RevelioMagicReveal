@@ -60,6 +60,8 @@ struct ContentView: View {
                 model.syncFeedbackSettings()
             } onContentChange: {
                 engine.reset()
+            } onPlayJingleBells: {
+                model.feedback.playJingleBells()
             }
             .presentationDetents([.medium, .large])
             .presentationBackground(.thinMaterial)
