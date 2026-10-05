@@ -56,7 +56,7 @@ struct ContentView: View {
             }
         }
         .sheet(isPresented: $showsSettings) {
-            SettingsSheet(settings: model.settings, media: model.media) {
+            SettingsSheet(settings: model.settings, media: model.media, audioHaptics: model.audioHaptics) {
                 model.syncFeedbackSettings()
             } onContentChange: {
                 engine.reset()

@@ -1,14 +1,17 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct SettingsSheet: View {
     @Bindable var settings: RevealSettings
     let media: MediaStore
+    let audioHaptics: AudioHapticsDemo
     let onFeedbackChange: () -> Void
     /// Le contenu a changé : on recouvre la carte.
     let onContentChange: () -> Void
     let onPlayJingleBells: () -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @State private var showsAudioImporter = false
 
     var body: some View {
         NavigationStack {
@@ -53,6 +56,21 @@ struct SettingsSheet: View {
                     Text("Retours")
                 } footer: {
                     Text("La mélodie passe par le rythme, les accents et la netteté des vibrations. Coupe le son pour sentir l'haptique seule.")
+                }
+                Section {
+                    Button("Battements de cœur (échographie)", systemImage: "heart.fill") { audioHaptics.playSample() }
+                    Button("Choisir un fichier audio…", systemImage: "waveform") { showsAudioImporter = true }
+                    if audioHaptics.state == .analyzing || audioHaptics.state == .playing {
+                        Button(audioHaptics.state == .analyzing ? "Analyse… (arrêter)" : "Arrêter",
+                               systemImage: "stop.fill", role: .destructive) { audioHaptics.stop() }
+                    }
+                } header: {
+                    Text("Vibrations depuis un son")
+                } footer: {
+                    Text("\(audioHaptics.summary.map { $0 + ". " } ?? "")L'app analyse le son au chargement : un coup sourd par battement détecté, et une nappe qui suit le volume du son.")
+                }
+                .fileImporter(isPresented: $showsAudioImporter, allowedContentTypes: [.audio]) { result in
+                    if case .success(let url) = result { audioHaptics.play(fileAt: url) }
                 }
                 Section("Contenu révélé") {
                     Button("Vidéo d'exemple") {

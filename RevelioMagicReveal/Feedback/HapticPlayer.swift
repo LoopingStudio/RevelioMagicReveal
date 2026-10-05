@@ -26,6 +26,8 @@ final class HapticPlayer {
     private var texturePatterns: [FeedbackTimbre: CHHapticPattern] = [:]
     private var rumblePattern: CHHapticPattern?
     private var celebrationPattern: CHHapticPattern?
+    /// Lecteur des vibrations déduites d'un fichier audio (arrêtable).
+    private var audioDrivenPlayer: CHHapticPatternPlayer?
 
     var isAvailable: Bool { engine != nil }
 
@@ -224,6 +226,24 @@ final class HapticPlayer {
         } catch {
             FeedbackLog.report("haptics.play", error)
         }
+    }
+
+    /// Vibrations déduites d'un son, démarrées après `delay` secondes (même délai que l'audio).
+    func playAudioDriven(_ events: [HapticEventSpec], delay: Double) {
+        stopAudioDriven()
+        guard !events.isEmpty, ensureRunning(), let engine else { return }
+        do {
+            let player = try engine.makePlayer(with: Self.pattern(from: events))
+            try player.start(atTime: engine.currentTime + delay)
+            audioDrivenPlayer = player
+        } catch {
+            FeedbackLog.report("haptics.audioDriven", error)
+        }
+    }
+
+    func stopAudioDriven() {
+        try? audioDrivenPlayer?.stop(atTime: CHHapticTimeImmediate)
+        audioDrivenPlayer = nil
     }
 
     func playCelebration() {

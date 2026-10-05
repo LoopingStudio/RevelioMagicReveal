@@ -9,6 +9,7 @@ final class AppModel {
     let engine: RevealEngine
     let inputs: InputCoordinator
     let media: MediaStore
+    let audioHaptics: AudioHapticsDemo
 
     @ObservationIgnored private var driver: DisplayLinkDriver?
     @ObservationIgnored private let launch: LaunchOptions
@@ -26,6 +27,7 @@ final class AppModel {
         self.engine = engine
         inputs = InputCoordinator(engine: engine, settings: settings)
         media = MediaStore()
+        audioHaptics = AudioHapticsDemo(feedback: feedback)
     }
 
     func start() {
