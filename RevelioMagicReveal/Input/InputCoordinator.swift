@@ -66,7 +66,7 @@ final class InputCoordinator {
             return
         }
         do {
-            try await mic.start()
+            try await mic.start(source: settings.mic)
             // Le geste a pu changer pendant le démarrage du micro.
             guard engine.gesture == .blow else {
                 mic.stop()
@@ -80,12 +80,19 @@ final class InputCoordinator {
         }
     }
 
+    /// Nouveau choix de micro : on relance la capture si elle tourne.
+    func restartMicrophone(for gesture: RevealGesture) async {
+        mic.stop()
+        microphone = .off
+        await activate(for: gesture)
+    }
+
     /// Enregistre 5 s étiquetées (son + mesures) pour régler la détection.
     func record(_ label: BlowRecorder.Label) {
         guard microphone == .listening, recordingLabel == nil else { return }
         recordingLabel = label
         mic.recorder.start(BlowRecorder.Context(label: label, seconds: 5,
-                                                micSource: "bas",
+                                                micSource: settings.mic.rawValue,
                                                 thresholdDB: Float(settings.blowThresholdDB),
                                                 classifier: engine.blowClassifier,
                                                 audioDiagnostic: mic.diagnostic),

@@ -4,6 +4,34 @@ import Foundation
 import UIKit
 import os
 
+/// Micro intégré qui écoute le souffle. Le mode « mesure » ne donne qu'un canal (pas de stéréo), mais on
+/// choisit lequel : celui du haut, côté écran (à côté de l'écouteur), ou celui du bas.
+nonisolated enum MicSource: String, CaseIterable, Sendable {
+    case front, bottom
+
+    var title: String {
+        switch self {
+        case .front: "Haut (côté écran)"
+        case .bottom: "Bas"
+        }
+    }
+
+    var orientation: AVAudioSession.Orientation {
+        switch self {
+        case .front: .front
+        case .bottom: .bottom
+        }
+    }
+
+    /// Consigne du geste « souffler » : où diriger son souffle pour ce micro.
+    var blowHint: String {
+        switch self {
+        case .front: "Souffle sur l'écran"
+        case .bottom: "Souffle sur le bas de l'iPhone"
+        }
+    }
+}
+
 /// Analyse le micro par blocs (~40 ms) et livre leurs mesures sur le main actor.
 ///
 /// L'activation de la session et le démarrage du moteur audio peuvent bloquer plusieurs secondes
@@ -41,11 +69,11 @@ nonisolated final class MicrophoneMonitor: @unchecked Sendable {
 
     var channelCount: Int { live.withLock { $0.channels } }
 
-    func start() async throws {
+    func start(source: MicSource) async throws {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             queue.async {
                 do {
-                    try self.startOnQueue()
+                    try self.startOnQueue(source: source)
                     continuation.resume()
                 } catch {
                     continuation.resume(throwing: error)
@@ -58,7 +86,7 @@ nonisolated final class MicrophoneMonitor: @unchecked Sendable {
         queue.async { self.stopOnQueue() }
     }
 
-    private func startOnQueue() throws {
+    private func startOnQueue(source: MicSource) throws {
         guard !isRunning else { return }
         let session = AVAudioSession.sharedInstance()
         // Même configuration que la sortie audio (Feedback/ProceduralSound) : souvent déjà en place.
@@ -67,7 +95,7 @@ nonisolated final class MicrophoneMonitor: @unchecked Sendable {
             try session.setCategory(.playAndRecord, mode: .measurement, options: options)
         }
         try session.setActive(true)
-        selectBottomMic(in: session)
+        selectMic(source, in: session)
 
         audioEngine = AVAudioEngine()
         let input = audioEngine.inputNode
@@ -100,18 +128,18 @@ nonisolated final class MicrophoneMonitor: @unchecked Sendable {
         isRunning = true
     }
 
-    /// Micro du bas, omnidirectionnel, en mono. En mode « mesure », iOS n'utilise de toute façon que le
-    /// micro principal quand l'appareil en a plusieurs (doc Apple de `AVAudioSession.Mode.measurement`) :
-    /// pas de stéréo ni de micro du haut possibles, et la détection est réglée sur ce micro-là.
-    private func selectBottomMic(in session: AVAudioSession) {
+    /// Micro choisi, omnidirectionnel si possible, en mono. Le mode « mesure » refuse la stéréo, mais le
+    /// choix du micro est respecté (constaté sur iPhone : sur le micro avant, le bas n'entend plus rien).
+    /// Un souffle dirigé vers l'écran arrive sur le micro du haut et passe à côté de celui du bas.
+    private func selectMic(_ source: MicSource, in session: AVAudioSession) {
         guard let builtIn = session.availableInputs?.first(where: { $0.portType == .builtInMic }) else { return }
         try? session.setPreferredInput(builtIn)
         try? session.setPreferredInputNumberOfChannels(1)
-        guard let bottom = builtIn.dataSources?.first(where: { $0.orientation == .bottom }) else { return }
-        if bottom.supportedPolarPatterns?.contains(.omnidirectional) == true {
-            try? bottom.setPreferredPolarPattern(.omnidirectional)
+        guard let dataSource = builtIn.dataSources?.first(where: { $0.orientation == source.orientation }) else { return }
+        if dataSource.supportedPolarPatterns?.contains(.omnidirectional) == true {
+            try? dataSource.setPreferredPolarPattern(.omnidirectional)
         }
-        try? builtIn.setPreferredDataSource(bottom)
+        try? builtIn.setPreferredDataSource(dataSource)
     }
 
     private func stopOnQueue() {

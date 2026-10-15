@@ -82,6 +82,9 @@ struct ContentView: View {
                 engine.reset()
             }
         }
+        .onChange(of: model.settings.micSource) {
+            Task { await model.inputs.restartMicrophone(for: engine.gesture) }
+        }
         .onChange(of: engine.phase) { _, phase in
             switch phase {
             case .revealed: model.media.playFromStart()
@@ -139,7 +142,8 @@ struct ContentView: View {
                 } else if engine.gesture == .blow, model.inputs.microphone == .unavailable {
                     Label("Micro indisponible", systemImage: "mic.slash")
                 } else {
-                    Label(engine.gesture.hint, systemImage: engine.gesture.symbol)
+                    Label(engine.gesture == .blow ? model.settings.mic.blowHint : engine.gesture.hint,
+                          systemImage: engine.gesture.symbol)
                 }
             }
             .font(.callout.weight(.medium))

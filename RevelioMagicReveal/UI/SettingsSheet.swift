@@ -25,12 +25,17 @@ struct SettingsSheet: View {
                         Text("Signature du souffle").tag(true)
                         Text("Volume seul").tag(false)
                     }
+                    Picker("Micro", selection: $settings.micSource) {
+                        ForEach(MicSource.allCases, id: \.rawValue) { source in
+                            Text(source.title).tag(source.rawValue)
+                        }
+                    }
                     SliderRow(title: "Seuil du micro", value: $settings.blowThresholdDB, range: -65 ... -20, step: 1) { "\(Int($0)) dB" }
                     SliderRow(title: "Vitesse", value: $settings.blowSpeed, range: 0.3...3, step: 0.1) { String(format: "×%.1f", $0) }
                 } header: {
                     Text("Souffler")
                 } footer: {
-                    Text("La signature du souffle ignore la voix et la musique. Seuil bas : un souffle léger suffit. Le mode debug montre les mesures en direct et permet d'enregistrer des échantillons pour régler la détection.")
+                    Text("La signature du souffle ignore la voix et la musique. Micro du haut : souffle vers l'écran ; micro du bas : sur le bord inférieur. Seuil bas : un souffle léger suffit. Le mode debug montre les mesures en direct et permet d'enregistrer des échantillons pour régler la détection.")
                 }
                 Section {
                     SliderRow(title: "Seuil de secousse", value: $settings.shakeThresholdG, range: 0.4...3, step: 0.1) { String(format: "%.1f g", $0) }

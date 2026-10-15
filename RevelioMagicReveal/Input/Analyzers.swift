@@ -125,7 +125,7 @@ nonisolated struct BlowClassifier: Equatable, Sendable {
 }
 
 /// Avec plusieurs canaux, on suit celui qui ressemble le plus à un souffle, à défaut le plus fort.
-/// (Le mode « mesure » limite aujourd'hui la capture à un seul canal, le micro du bas.)
+/// (Le mode « mesure » limite aujourd'hui la capture à un seul canal, le micro choisi.)
 nonisolated enum BlowChannelChooser {
     static func choose(_ channels: [BlowFeatures], classifier: BlowClassifier, thresholdDB: Float) -> Int {
         var best = -1
