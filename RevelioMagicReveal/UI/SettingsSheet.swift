@@ -63,7 +63,6 @@ struct SettingsSheet: View {
                     Text("La mélodie passe par le rythme, les accents et la netteté des vibrations. Coupe le son pour sentir l'haptique seule.")
                 }
                 Section {
-                    Button("Battements de cœur (échographie)", systemImage: "heart.fill") { audioHaptics.playSample() }
                     Button("Choisir un fichier audio…", systemImage: "waveform") { showsAudioImporter = true }
                     if audioHaptics.state == .analyzing || audioHaptics.state == .playing {
                         Button(audioHaptics.state == .analyzing ? "Analyse… (arrêter)" : "Arrêter",

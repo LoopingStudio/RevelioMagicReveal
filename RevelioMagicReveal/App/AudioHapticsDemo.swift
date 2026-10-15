@@ -18,11 +18,6 @@ final class AudioHapticsDemo {
         self.feedback = feedback
     }
 
-    func playSample() {
-        guard let url = Bundle.main.url(forResource: "coeur-echographie", withExtension: "mp3") else { return }
-        play(url, name: "Échographie")
-    }
-
     /// Fichier choisi dans Fichiers : copié dans le dossier temporaire (l'accès sécurisé est éphémère).
     func play(fileAt picked: URL) {
         let accessing = picked.startAccessingSecurityScopedResource()

@@ -40,17 +40,6 @@ struct HeartbeatAnalyzerTests {
         #expect(analysis.beats.isEmpty)
     }
 
-    /// Le vrai bruitage d'échographie embarqué : l'analyse, faite par l'app, doit trouver un cœur
-    /// d'environ 111 battements/min et un coup régulier par cycle.
-    @Test func bundledEchographySound() throws {
-        let url = try #require(Bundle.main.url(forResource: "coeur-echographie", withExtension: "mp3"))
-        let analysis = try HeartbeatAnalyzer.analyze(fileAt: url)
-        #expect(abs(analysis.bpm - 111) < 8, "bpm \(analysis.bpm)")
-        #expect((32...40).contains(analysis.beats.count), "\(analysis.beats.count) coups")
-        let gaps = zip(analysis.beats.dropFirst(), analysis.beats).map { $0.time - $1.time }
-        #expect(gaps.allSatisfy { $0 > 0.4 && $0 < 0.7 }, "écarts \(gaps)")
-    }
-
     @Test func hapticsFollowTheAnalysis() {
         let analysis = HeartbeatAnalyzer.analyze(samples: syntheticHeartbeat(bpm: 120, seconds: 5), sampleRate: 44_100)
         let events = HapticScripts.audioDriven(analysis)
