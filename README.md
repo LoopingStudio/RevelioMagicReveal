@@ -25,6 +25,17 @@ Au-delà d'un seuil (70 % par défaut), le reste du masque disparaît tout seul 
 
 Retours **haptiques** (Core Haptics) et **sons procéduraux** (`AVAudioEngine`) propres à chaque masque et à chaque geste.
 
+## Message audio
+
+Le bouton **onde** de la barre du haut ouvre un second banc d'essai : un même message vocal vu de plusieurs façons, pour comparer.
+
+- **Sources** : un message d'exemple dit par la voix de synthèse d'iOS (rendu sur l'appareil puis gardé en cache, aucun son tiers embarqué), ou un message enregistré au micro dans l'écran (60 s au plus, remis à niveau : passe-haut, silences rognés, normalisation).
+- **Barre de lecture** façon message vocal : forme d'onde du message entier, dorée pour la partie écoutée, à scrubber au doigt.
+- **Scènes** : halo autour de la photo, couronne spectrale, égaliseur, oscilloscope, onde défilante (Dictaphone), spectrogramme, orbe, guirlande (une ampoule par bande de fréquences), flocons et paillettes, et « la voix révèle la photo » (le givre fond à mesure que le message avance).
+- **Vibrations** qui suivent la voix (nappe selon le niveau, petit coup sur chaque syllabe), calées sur l'audio.
+
+Le message est analysé une fois (100 trames/s : niveau, 32 bandes, attaques de syllabes), puis chaque scène se dessine à partir de l'instant de lecture : pas de tap audio en direct, et le scrub donne la même image à la même seconde. Le message se lit sur un petit moteur audio à lui : il s'écoute même quand les bruitages sont coupés. Pendant que l'écran est ouvert, le micro du souffle est mis en pause.
+
 ## Lancer le projet
 
 - Xcode 27, iOS 26 minimum, iPhone en portrait.
@@ -51,12 +62,14 @@ Le micro est lu en mode « mesure » (sans traitement du système), par blocs de
 ```
 RevelioMagicReveal/
   App/        point d'entrée, modèle, médias, options de lancement
+  Audio/      configuration de session partagée (mode « mesure »)
   Core/       RevealEngine (état, avancé par CADisplayLink), carte de couverture, particules
   Input/      micro (analyse du souffle, enregistrements), mouvement
+  Message/    message audio : analyse, voix d'exemple, enregistreur, lecteur, vibrations
   Masks/      un dossier par masque (rendu, particules) + célébration
   Shaders/    shaders Metal [[stitchable]] (givre, neige, doré)
   Feedback/   haptique, synthèse sonore, Jingle Bells, vibrations depuis un fichier audio
-  UI/         écran principal, réglages, panneau de debug
+  UI/         écran principal, réglages, panneau de debug, écran du message (UI/Message)
 ```
 
 Principe : les **gestes écrivent** dans une carte de couverture (grille de 0 à 1 qui ne fait que descendre) et les **masques la lisent** pour dessiner le rendu, les bords et les particules. Le détail est dans [docs/specs/2026-10-02-revelio-noel-design.md](docs/specs/2026-10-02-revelio-noel-design.md).
@@ -69,4 +82,4 @@ Principe : les **gestes écrivent** dans une carte de couverture (grille de 0 à
 | `scripts/make-sample-video.sh` | régénère la vidéo d'exemple embarquée |
 | `scripts/analyse-souffle.py` | rejoue la détection du souffle sur des prises CSV |
 
-Les arguments de lancement `-RNMask`, `-RNGesture`, `-RNDemo partial|finish` et `-RNDebug YES` permettent de vérifier un rendu sans geste réel.
+Les arguments de lancement `-RNMask`, `-RNGesture`, `-RNDemo partial|finish` et `-RNDebug YES` permettent de vérifier un rendu sans geste réel ; `-RNMessage <scène>` (`halo`, `ring`, `equalizer`, `scope`, `scroll`, `spectrogram`, `orb`, `garland`, `particles`, `reveal`) ouvre l'écran du message sur cette scène et lit l'exemple.

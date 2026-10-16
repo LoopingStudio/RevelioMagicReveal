@@ -268,14 +268,9 @@ nonisolated final class AudioOutput: @unchecked Sendable {
         }
     }
 
-    /// Même catégorie, même mode, mêmes options que `MicrophoneMonitor` : on ne la change que si besoin.
+    /// Même catégorie, même mode, mêmes options que le micro : on ne la change que si besoin.
     private static func configureSession() throws {
-        let session = AVAudioSession.sharedInstance()
-        let options: AVAudioSession.CategoryOptions = [.mixWithOthers, .defaultToSpeaker]
-        if session.category != .playAndRecord || session.mode != .measurement || session.categoryOptions != options {
-            try session.setCategory(.playAndRecord, mode: .measurement, options: options)
-        }
-        try session.setActive(true)
+        try AudioSessionConfig.activate()
     }
 
     // MARK: - Évènements système

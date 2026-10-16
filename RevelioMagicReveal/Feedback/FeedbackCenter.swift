@@ -206,6 +206,32 @@ final class FeedbackCenter {
         haptics.stopAudioDriven()
     }
 
+    // MARK: - Message audio
+
+    /// Prépare les vibrations d'un message vocal. L'écran du message a son propre interrupteur : le moteur
+    /// haptique démarre ici à la demande, même si les vibrations des gestes sont coupées.
+    func prepareVoiceHaptics(_ events: [HapticEventSpec]) -> Bool {
+        guard prepared, inForeground, Self.drivesHardware else { return false }
+        endContinuousFeedback()
+        haptics.start()
+        return haptics.prepareAudioDriven(events)
+    }
+
+    /// Départ des vibrations préparées, à l'instant où le message devient audible.
+    func startVoiceHaptics(atMediaTime time: CFTimeInterval) {
+        haptics.startAudioDriven(atMediaTime: time)
+    }
+
+    func stopVoiceHaptics() {
+        haptics.stopAudioDriven()
+    }
+
+    /// Fin de l'écran du message : le moteur haptique revient à son réglage.
+    func endVoiceSession() {
+        haptics.stopAudioDriven()
+        if !hapticsEnabled { haptics.stop() }
+    }
+
     // MARK: - Interne
 
     private func endContinuousFeedback() {

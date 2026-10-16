@@ -5,6 +5,7 @@ struct ContentView: View {
     let model: AppModel
 
     @State private var showsSettings = false
+    @State private var showsMessage = false
     @State private var pickerItem: PhotosPickerItem?
     @Environment(\.scenePhase) private var scenePhase
 
@@ -66,7 +67,16 @@ struct ContentView: View {
             .presentationDetents([.medium, .large])
             .presentationBackground(.thinMaterial)
         }
-        .onAppear { model.start() }
+        .sheet(isPresented: $showsMessage, onDismiss: model.didHideAudioMessage) {
+            AudioMessageSheet(model: model.audioMessage, cover: model.media.cover,
+                              autoplay: model.launchMessage != nil)
+                .presentationDetents([.large])
+                .interactiveDismissDisabled(model.audioMessage.isRecording)
+        }
+        .onAppear {
+            model.start()
+            if model.launchMessage != nil { showAudioMessage() }
+        }
         .task(id: engine.gesture) { await model.inputs.activate(for: engine.gesture) }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
@@ -116,6 +126,15 @@ struct ContentView: View {
             .disabled(model.media.isLoading)
             .accessibilityLabel("Choisir une vidéo")
 
+            Button(action: showAudioMessage) {
+                Image(systemName: "waveform")
+                    .font(.system(size: 17, weight: .semibold))
+                    .frame(width: 44, height: 44)
+            }
+            .buttonStyle(.glass)
+            .buttonBorderShape(.circle)
+            .accessibilityLabel("Message audio")
+
             Button {
                 showsSettings = true
             } label: {
@@ -128,6 +147,11 @@ struct ContentView: View {
             .accessibilityLabel("Réglages")
         }
         .tint(Palette.cream)
+    }
+
+    private func showAudioMessage() {
+        model.willShowAudioMessage()
+        showsMessage = true
     }
 
     private var hintRow: some View {

@@ -35,27 +35,39 @@ private struct ChoiceRow<Item: Hashable>: View {
             HStack(spacing: 8) {
                 ForEach(items, id: \.self) { item in
                     let content = label(item)
-                    let selected = item == selection
-                    Button {
+                    GlassChip(title: content.title, symbol: content.symbol, selected: item == selection) {
                         select(item)
-                    } label: {
-                        VStack(spacing: 4) {
-                            Image(systemName: content.symbol)
-                                .font(.system(size: 17, weight: .semibold))
-                                .frame(height: 20)
-                            Text(content.title)
-                                .font(.caption.weight(.semibold))
-                        }
-                        .foregroundStyle(selected ? Palette.night : Palette.cream)
-                        .frame(maxWidth: .infinity, minHeight: 56)
-                        .contentShape(.rect(cornerRadius: 18))
                     }
-                    .buttonStyle(.plain)
-                    .glassEffect(selected ? .regular.tint(Palette.gold).interactive() : .regular.interactive(),
-                                 in: .rect(cornerRadius: 18))
-                    .accessibilityAddTraits(selected ? .isSelected : [])
                 }
             }
         }
+    }
+}
+
+/// Choix en verre (icône + titre), doré quand il est sélectionné. Occupe la largeur qu'on lui donne.
+struct GlassChip: View {
+    let title: String
+    let symbol: String
+    let selected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 4) {
+                Image(systemName: symbol)
+                    .font(.system(size: 17, weight: .semibold))
+                    .frame(height: 20)
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .lineLimit(1)
+            }
+            .foregroundStyle(selected ? Palette.night : Palette.cream)
+            .frame(maxWidth: .infinity, minHeight: 56)
+            .contentShape(.rect(cornerRadius: 18))
+        }
+        .buttonStyle(.plain)
+        .glassEffect(selected ? .regular.tint(Palette.gold).interactive() : .regular.interactive(),
+                     in: .rect(cornerRadius: 18))
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }

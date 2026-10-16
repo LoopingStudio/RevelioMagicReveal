@@ -23,6 +23,9 @@ final class InputCoordinator {
     @ObservationIgnored private var shakeAnalyzer: ShakeAnalyzer
     @ObservationIgnored private var lastMotionTimestamp: TimeInterval?
     @ObservationIgnored private var shakeObserver: NSObjectProtocol?
+    /// Micro réservé par un autre écran (message audio) : le souffle ne se rallume pas tant qu'il l'est,
+    /// même au retour au premier plan.
+    @ObservationIgnored private var held = false
 
     init(engine: RevealEngine, settings: RevealSettings) {
         self.engine = engine
@@ -56,7 +59,7 @@ final class InputCoordinator {
 
     /// Allume le micro seulement pour « souffler ».
     func activate(for gesture: RevealGesture) async {
-        guard gesture == .blow else {
+        guard gesture == .blow, !held else {
             mic.stop()
             microphone = .off
             return
@@ -67,8 +70,8 @@ final class InputCoordinator {
         }
         do {
             try await mic.start(source: settings.mic)
-            // Le geste a pu changer pendant le démarrage du micro.
-            guard engine.gesture == .blow else {
+            // Le geste a pu changer, ou le micro être réservé, pendant le démarrage.
+            guard engine.gesture == .blow, !held else {
                 mic.stop()
                 microphone = .off
                 return
@@ -84,6 +87,18 @@ final class InputCoordinator {
     func restartMicrophone(for gesture: RevealGesture) async {
         mic.stop()
         microphone = .off
+        await activate(for: gesture)
+    }
+
+    /// Réserve le micro pour un autre usage : le souffle s'arrête et ne se rallume plus.
+    func hold() {
+        held = true
+        suspend()
+    }
+
+    /// Rend le micro au souffle.
+    func release(for gesture: RevealGesture) async {
+        held = false
         await activate(for: gesture)
     }
 

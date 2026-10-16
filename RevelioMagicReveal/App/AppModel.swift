@@ -10,6 +10,7 @@ final class AppModel {
     let inputs: InputCoordinator
     let media: MediaStore
     let audioHaptics: AudioHapticsDemo
+    let audioMessage: AudioMessageModel
 
     @ObservationIgnored private var driver: DisplayLinkDriver?
     @ObservationIgnored private let launch: LaunchOptions
@@ -28,6 +29,23 @@ final class AppModel {
         inputs = InputCoordinator(engine: engine, settings: settings)
         media = MediaStore()
         audioHaptics = AudioHapticsDemo(feedback: feedback)
+        audioMessage = AudioMessageModel(feedback: feedback, settings: settings)
+        if let visualization = launch.message { audioMessage.visualization = visualization }
+    }
+
+    /// Visualisation demandée au lancement : l'écran du message s'ouvre dessus.
+    var launchMessage: AudioMessageModel.Visualization? { launch.message }
+
+    /// Avant d'ouvrir l'écran du message : il prend le micro et le son pour lui.
+    func willShowAudioMessage() {
+        inputs.hold()
+        audioHaptics.stop()
+    }
+
+    /// Écran du message fermé : le souffle récupère le micro.
+    func didHideAudioMessage() {
+        audioMessage.close()
+        Task { await inputs.release(for: engine.gesture) }
     }
 
     func start() {

@@ -288,7 +288,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = "Magic Reveal";
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Le micro sert à détecter ton souffle pour révéler la photo. Rien n'est enregistré.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Le micro sert à détecter ton souffle pour révéler la photo, et à enregistrer un message vocal quand tu le demandes.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -329,7 +329,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = "Magic Reveal";
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Le micro sert à détecter ton souffle pour révéler la photo. Rien n'est enregistré.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Le micro sert à détecter ton souffle pour révéler la photo, et à enregistrer un message vocal quand tu le demandes.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

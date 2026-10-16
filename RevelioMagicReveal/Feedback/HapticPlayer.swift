@@ -26,7 +26,7 @@ final class HapticPlayer {
     private var texturePatterns: [FeedbackTimbre: CHHapticPattern] = [:]
     private var rumblePattern: CHHapticPattern?
     private var celebrationPattern: CHHapticPattern?
-    /// Lecteur des vibrations déduites d'un fichier audio (arrêtable).
+    /// Lecteur des vibrations déduites d'un son (fichier audio, message vocal), arrêtable.
     private var audioDrivenPlayer: CHHapticPatternPlayer?
 
     var isAvailable: Bool { engine != nil }
@@ -95,6 +95,7 @@ final class HapticPlayer {
         scratchPlayer = nil
         scratchTimbre = nil
         rumblePlayer = nil
+        audioDrivenPlayer = nil
         isScratchPlaying = false
         isRumblePlaying = false
         scratchThrottle.reset()
@@ -230,12 +231,29 @@ final class HapticPlayer {
 
     /// Vibrations déduites d'un son, démarrées après `delay` secondes (même délai que l'audio).
     func playAudioDriven(_ events: [HapticEventSpec], delay: Double) {
+        guard prepareAudioDriven(events) else { return }
+        startAudioDriven(atMediaTime: CACurrentMediaTime() + delay)
+    }
+
+    /// Construit le motif et son lecteur sans démarrer : pour un long message, cela prend quelques
+    /// dizaines de ms, à faire avant de lancer l'audio pour que le départ commun reste exact.
+    func prepareAudioDriven(_ events: [HapticEventSpec]) -> Bool {
         stopAudioDriven()
-        guard !events.isEmpty, ensureRunning(), let engine else { return }
+        guard !events.isEmpty, ensureRunning(), let engine else { return false }
         do {
-            let player = try engine.makePlayer(with: Self.pattern(from: events))
-            try player.start(atTime: engine.currentTime + delay)
-            audioDrivenPlayer = player
+            audioDrivenPlayer = try engine.makePlayer(with: Self.pattern(from: events))
+            return true
+        } catch {
+            FeedbackLog.report("haptics.audioDriven", error)
+            return false
+        }
+    }
+
+    /// Démarre les vibrations préparées à l'instant donné (horloge `CACurrentMediaTime`, celle de l'audio).
+    func startAudioDriven(atMediaTime time: CFTimeInterval) {
+        guard let engine, let audioDrivenPlayer else { return }
+        do {
+            try audioDrivenPlayer.start(atTime: engine.currentTime + max(0, time - CACurrentMediaTime()))
         } catch {
             FeedbackLog.report("haptics.audioDriven", error)
         }

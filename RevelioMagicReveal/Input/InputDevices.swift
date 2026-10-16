@@ -89,13 +89,8 @@ nonisolated final class MicrophoneMonitor: @unchecked Sendable {
     private func startOnQueue(source: MicSource) throws {
         guard !isRunning else { return }
         let session = AVAudioSession.sharedInstance()
-        // Même configuration que la sortie audio (Feedback/ProceduralSound) : souvent déjà en place.
-        let options: AVAudioSession.CategoryOptions = [.mixWithOthers, .defaultToSpeaker]
-        if session.category != .playAndRecord || session.mode != .measurement || session.categoryOptions != options {
-            try session.setCategory(.playAndRecord, mode: .measurement, options: options)
-        }
-        try session.setActive(true)
-        selectMic(source, in: session)
+        try AudioSessionConfig.activate()
+        AudioSessionConfig.selectMic(source)
 
         audioEngine = AVAudioEngine()
         let input = audioEngine.inputNode
@@ -126,20 +121,6 @@ nonisolated final class MicrophoneMonitor: @unchecked Sendable {
             throw error
         }
         isRunning = true
-    }
-
-    /// Micro choisi, omnidirectionnel si possible, en mono. Le mode « mesure » refuse la stéréo, mais le
-    /// choix du micro est respecté (constaté sur iPhone : sur le micro avant, le bas n'entend plus rien).
-    /// Un souffle dirigé vers l'écran arrive sur le micro du haut et passe à côté de celui du bas.
-    private func selectMic(_ source: MicSource, in session: AVAudioSession) {
-        guard let builtIn = session.availableInputs?.first(where: { $0.portType == .builtInMic }) else { return }
-        try? session.setPreferredInput(builtIn)
-        try? session.setPreferredInputNumberOfChannels(1)
-        guard let dataSource = builtIn.dataSources?.first(where: { $0.orientation == source.orientation }) else { return }
-        if dataSource.supportedPolarPatterns?.contains(.omnidirectional) == true {
-            try? dataSource.setPreferredPolarPattern(.omnidirectional)
-        }
-        try? builtIn.setPreferredDataSource(dataSource)
     }
 
     private func stopOnQueue() {
