@@ -6,10 +6,15 @@ struct StageInput {
     let message: AudioMessage
     let time: Double
     let photo: MessagePhoto?
+    /// Horloge murale (s) : le mouvement de fond des scènes qui vivent aussi à l'arrêt (l'orbe).
+    let now: Double
+    /// Lecture en cours : à l'arrêt, les effets d'une syllabe (onde, sursaut) resteraient figés.
+    let playing: Bool
 }
 
 /// Le dessin des visualisations du message. Chacune est une fonction de l'instant de lecture, sans
-/// état : on peut scrubber, revenir en arrière, la même seconde donne la même image.
+/// état : on peut scrubber, revenir en arrière, la même seconde donne la même image. Seul le mouvement
+/// de fond de l'orbe suit l'horloge murale.
 enum StageArt {
     static func draw(_ kind: AudioMessageModel.Visualization, in context: inout GraphicsContext, size: CGSize,
                      input: StageInput) {
@@ -206,46 +211,86 @@ enum StageArt {
 
     // MARK: - Orbe
 
-    /// Trois bulles superposées (graves, médiums, aigus) dont le contour ondule avec leurs fréquences.
+    private static let coral = Color(red: 0.96, green: 0.44, blue: 0.36)
+    private static let teal = Color(red: 0.36, green: 0.82, blue: 0.72)
+
+    /// Une sphère vivante : des lumières colorées tournent à l'intérieur (plus vite quand on parle), le
+    /// volume la gonfle, chaque registre fait onduler son contour (graves en 2 lobes, médiums en 3, aigus
+    /// en 5), chaque syllabe donne un sursaut et une onde. À l'arrêt, elle respire doucement.
     private static func orb(_ ctx: inout GraphicsContext, _ size: CGSize, _ s: StageInput) {
         let c = CGPoint(x: size.width / 2, y: size.height / 2)
         let side = min(size.width, size.height)
         let level = CGFloat(s.analysis.level(at: s.time))
-        let bands = s.analysis.spectrum(at: s.time).map { CGFloat($0) }
-        let groups = [0..<11, 11..<22, 22..<32]
-        // Bords lumineux plutôt que centres pleins : trois centres superposés en mode additif tournent au blanc.
-        let colors = [gold, Color(red: 0.95, green: 0.42, blue: 0.36), Color(red: 0.45, green: 0.85, blue: 0.75)]
-        var layer = ctx
-        layer.blendMode = .plusLighter
-        layer.opacity = 0.75
-        for (index, group) in groups.enumerated() {
-            let values = Array(bands[group])
-            let energy = values.reduce(0, +) / CGFloat(values.count)
-            let radius = side * (0.15 + 0.04 * CGFloat(index)) * (1 + 0.3 * level + 0.15 * energy)
-            let quarter = max(1, values.count / 4)
-            let ripples = (0..<4).map { k -> CGFloat in
-                let slice = values[min(k * quarter, values.count - 1)..<min((k + 1) * quarter, values.count)]
-                return slice.reduce(0, +) / CGFloat(max(slice.count, 1)) * 0.1
-            }
-            let spin = s.time * (0.5 + 0.25 * Double(index)) * (index.isMultiple(of: 2) ? 1 : -1)
-            let points = (0..<96).map { p -> CGPoint in
-                let angle = Double(p) / 96 * 2 * .pi
-                var scale: CGFloat = 1
-                for (k, ripple) in ripples.enumerated() {
-                    scale += ripple * CGFloat(sin(Double(k + 2) * angle + spin * Double(k + 1) + Double(index) * 1.7))
-                }
-                return polar(c, angle, radius * min(scale, 1.3))
-            }
-            let color = colors[index]
-            let rim = Gradient(stops: [.init(color: color.opacity(0.12), location: 0),
-                                       .init(color: color.opacity(0.7), location: 0.7),
-                                       .init(color: color.opacity(0), location: 1)])
-            layer.fill(smoothLoop(points),
-                       with: .radialGradient(rim, center: c, startRadius: 0, endRadius: radius * 1.25))
+        let registers = registerEnergy(s.analysis.spectrum(at: s.time))
+        // Mouvement de fond (horloge murale) et avancée de la voix (énergie cumulée, qui ne bouge qu'en parlant).
+        let drift = s.now
+        let voice = Double(s.analysis.cumulative(at: s.time))
+        let recent: [AudioMessageAnalysis.Onset] = s.playing ? s.analysis.onsets(in: (s.time - 1.2)...s.time) : []
+        var pop: CGFloat = 0
+        for onset in recent where s.time - onset.time < 0.25 {
+            let fading = 1 - (s.time - onset.time) / 0.25
+            pop = max(pop, CGFloat(onset.strength) * CGFloat(fading))
         }
-        let core = side * 0.05 * (1 + level)
-        ctx.fill(circle(c, core), with: .radialGradient(Gradient(colors: [cream.opacity(0.9), cream.opacity(0)]),
-                                                         center: c, startRadius: 0, endRadius: core))
+        let breathing = 0.015 * CGFloat(sin(drift * 1.3))
+        let radius = side * 0.24 * (1 + 0.18 * level + 0.07 * pop + breathing)
+
+        let lobes: [(count: Double, amount: CGFloat, speed: Double, phase: Double)] = [
+            (2, 0.025 + 0.06 * registers[0], 0.07, 0),
+            (3, 0.015 + 0.05 * registers[1], -0.09, 1.3),
+            (5, 0.008 + 0.035 * registers[2], 0.13, 2.1),
+        ]
+        let contour = (0..<128).map { i -> CGPoint in
+            let angle = Double(i) / 128 * 2 * Double.pi
+            var scale: CGFloat = 1
+            for lobe in lobes {
+                let turn = (drift * lobe.speed + voice * lobe.speed * 4) * 2 * Double.pi
+                scale += lobe.amount * CGFloat(sin(lobe.count * angle + turn + lobe.phase))
+            }
+            return polar(c, angle, radius * scale)
+        }
+        let body = smoothLoop(contour)
+
+        ctx.fill(circle(c, radius * 1.9), with: .radialGradient(
+            Gradient(colors: [gold.opacity(0.1 + 0.3 * level), gold.opacity(0)]),
+            center: c, startRadius: radius * 0.8, endRadius: radius * 1.9))
+        for onset in recent {
+            let age = CGFloat((s.time - onset.time) / 1.2)
+            let travel = 1 - (1 - age) * (1 - age)
+            ctx.stroke(circle(c, radius * (1.08 + 0.7 * travel)),
+                       with: .color(cream.opacity((1 - age) * (1 - age) * 0.35 * CGFloat(onset.strength))), lineWidth: 1.5)
+        }
+
+        var inside = ctx
+        inside.clip(to: body)
+        inside.fill(body, with: .radialGradient(
+            Gradient(colors: [Color(red: 0.13, green: 0.14, blue: 0.28), Color(red: 0.05, green: 0.06, blue: 0.15)]),
+            center: c, startRadius: 0, endRadius: radius * 1.2))
+        // « Écran » plutôt qu'additif : quatre lumières superposées saturaient en blanc à voix forte. La voix
+        // les agrandit et les fait tourner plus vite, sans trop les éclaircir.
+        inside.blendMode = .screen
+        let lights: [(color: Color, speed: Double, orbit: CGFloat, phase: Double, register: Int)] = [
+            (gold, 0.05, 0.45, 0, 0), (coral, -0.04, 0.5, 2.1, 1), (teal, 0.035, 0.42, 4.2, 2), (cream, -0.07, 0.22, 1, 1),
+        ]
+        for light in lights {
+            let angle = (drift * light.speed + voice * light.speed * 6) * 2 * Double.pi + light.phase
+            let spot = polar(c, angle, radius * light.orbit)
+            let reach = radius * (0.75 + 0.4 * registers[light.register])
+            let strength = light.color == cream ? 0.2 + 0.15 * level : 0.55 + 0.2 * level
+            inside.fill(circle(spot, reach), with: .radialGradient(
+                Gradient(colors: [light.color.opacity(strength), light.color.opacity(0)]),
+                center: spot, startRadius: 0, endRadius: reach))
+        }
+        // Volume : bord assombri (lumière venue du haut à gauche), puis un reflet.
+        inside.blendMode = .normal
+        let shade = CGPoint(x: c.x + radius * 0.15, y: c.y + radius * 0.2)
+        inside.fill(body, with: .radialGradient(
+            Gradient(stops: [.init(color: .black.opacity(0), location: 0.55), .init(color: .black.opacity(0.4), location: 1)]),
+            center: shade, startRadius: 0, endRadius: radius * 1.25))
+        let glint = CGPoint(x: c.x - radius * 0.36, y: c.y - radius * 0.42)
+        inside.fill(circle(glint, radius * 0.34), with: .radialGradient(
+            Gradient(colors: [.white.opacity(0.32), .white.opacity(0)]), center: glint, startRadius: 0, endRadius: radius * 0.34))
+
+        ctx.stroke(body, with: .color(cream.opacity(0.22 + 0.35 * level)), lineWidth: 1.2)
     }
 
     // MARK: - Outils

@@ -44,6 +44,9 @@ final class AudioMessageModel {
             case .orb: "drop.fill"
             }
         }
+
+        /// Bouge aussi à l'arrêt (mouvement de fond à 30 images/s) : l'orbe respire, ses couleurs tournent.
+        var livesWhenIdle: Bool { self == .orb }
     }
 
     static let overviewBars = 44

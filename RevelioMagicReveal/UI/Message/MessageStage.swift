@@ -47,8 +47,10 @@ struct MessageStage: View {
 
     private func visualization(analysis: AudioMessageAnalysis, message: AudioMessage) -> some View {
         let kind = model.visualization
-        return TimelineView(.animation(paused: !model.isAnimating)) { _ in
-            let input = StageInput(analysis: analysis, message: message, time: model.playhead(), photo: photo)
+        let idle = kind.livesWhenIdle && !model.isAnimating
+        return TimelineView(.animation(minimumInterval: idle ? 1.0 / 30 : nil, paused: !model.isAnimating && !idle)) { timeline in
+            let input = StageInput(analysis: analysis, message: message, time: model.playhead(), photo: photo,
+                                   now: timeline.date.timeIntervalSinceReferenceDate, playing: model.isPlaying)
             Canvas(rendersAsynchronously: false) { context, size in
                 StageArt.draw(kind, in: &context, size: size, input: input)
             }
