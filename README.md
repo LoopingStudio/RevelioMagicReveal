@@ -31,7 +31,7 @@ Le bouton **onde** de la barre du haut ouvre un second banc d'essai : un même m
 
 - **Sources** : un message d'exemple dit par la voix de synthèse d'iOS (rendu sur l'appareil puis gardé en cache, aucun son tiers embarqué), ou un message enregistré au micro dans l'écran (60 s au plus, remis à niveau : passe-haut, silences rognés, normalisation).
 - **Barre de lecture** façon message vocal : forme d'onde du message entier, dorée pour la partie écoutée, à scrubber au doigt.
-- **Scènes** : halo autour de la photo, couronne spectrale, égaliseur, oscilloscope, onde défilante (Dictaphone), spectrogramme, orbe, guirlande (une ampoule par bande de fréquences), flocons et paillettes, et « la voix révèle la photo » (le givre fond à mesure que le message avance).
+- **Scènes** : halo autour de la photo (un anneau par registre), couronne spectrale qui tourne avec la voix, oscilloscope (axe du temps en « fisheye », rémanence), onde défilante (Dictaphone) et orbe.
 - **Vibrations** qui suivent la voix (nappe selon le niveau, petit coup sur chaque syllabe), calées sur l'audio.
 
 Le message est analysé une fois (100 trames/s : niveau, 32 bandes, attaques de syllabes), puis chaque scène se dessine à partir de l'instant de lecture : pas de tap audio en direct, et le scrub donne la même image à la même seconde. Le message se lit sur un petit moteur audio à lui : il s'écoute même quand les bruitages sont coupés. Pendant que l'écran est ouvert, le micro du souffle est mis en pause.
@@ -82,4 +82,4 @@ Principe : les **gestes écrivent** dans une carte de couverture (grille de 0 à
 | `scripts/make-sample-video.sh` | régénère la vidéo d'exemple embarquée |
 | `scripts/analyse-souffle.py` | rejoue la détection du souffle sur des prises CSV |
 
-Les arguments de lancement `-RNMask`, `-RNGesture`, `-RNDemo partial|finish` et `-RNDebug YES` permettent de vérifier un rendu sans geste réel ; `-RNMessage <scène>` (`halo`, `ring`, `equalizer`, `scope`, `scroll`, `spectrogram`, `orb`, `garland`, `particles`, `reveal`) ouvre l'écran du message sur cette scène et lit l'exemple.
+Les arguments de lancement `-RNMask`, `-RNGesture`, `-RNDemo partial|finish` et `-RNDebug YES` permettent de vérifier un rendu sans geste réel ; `-RNMessage <scène>` (`halo`, `ring`, `scope`, `scroll`, `orb`) ouvre l'écran du message sur cette scène et lit l'exemple.

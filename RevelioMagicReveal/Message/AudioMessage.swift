@@ -12,34 +12,28 @@ nonisolated struct AudioMessage: Sendable, Identifiable {
 
     var duration: Double { sampleRate > 0 ? Double(samples.count) / sampleRate : 0 }
 
-    /// Forme d'onde autour de `time` sur `span` secondes, réduite à `points` valeurs (moyenne par tranche,
-    /// ce qui lisse la courbe). Le début est calé sur un passage par zéro montant : l'oscilloscope tient
-    /// en place d'une image à l'autre au lieu de trembler.
-    func scope(at time: Double, span: Double, points: Int) -> [Float] {
-        guard points > 0, !samples.isEmpty else { return [Float](repeating: 0, count: max(points, 0)) }
-        let length = max(points, Int(span * sampleRate))
-        var start = Int((time - span / 2) * sampleRate)
-        let search = Int(0.01 * sampleRate)
-        if start >= 1, start + search + length < samples.count {
-            for i in start..<(start + search) where samples[i - 1] < 0 && samples[i] >= 0 {
-                start = i
-                break
-            }
+    /// Moyenne du signal sur `window` secondes autour de `time` (0 hors du message) : un point
+    /// d'oscilloscope, lissé juste ce qu'il faut pour l'échelle de temps où on le dessine.
+    func average(at time: Double, window: Double) -> Float {
+        let center = Int((time * sampleRate).rounded())
+        let half = max(0, Int(window * sampleRate / 2))
+        let from = max(0, center - half), to = min(samples.count, center + half + 1)
+        guard from < to else { return 0 }
+        var sum: Float = 0
+        for i in from..<to { sum += samples[i] }
+        return sum / Float(to - from)
+    }
+
+    /// Dernier passage par zéro montant avant `time` (cherché sur `within` secondes) : caler
+    /// l'oscilloscope dessus le fait tenir en place au lieu de trembler d'une image à l'autre.
+    func risingZeroCrossing(before time: Double, within: Double) -> Double {
+        let end = min(samples.count - 1, Int(time * sampleRate))
+        let start = max(1, end - Int(within * sampleRate))
+        guard start < end else { return time }
+        for i in stride(from: end, through: start, by: -1) where samples[i - 1] < 0 && samples[i] >= 0 {
+            return Double(i) / sampleRate
         }
-        var out = [Float](repeating: 0, count: points)
-        let perPoint = Double(length) / Double(points)
-        for p in 0..<points {
-            let from = start + Int(Double(p) * perPoint)
-            let to = max(from + 1, start + Int(Double(p + 1) * perPoint))
-            var sum: Float = 0
-            var count = 0
-            for i in from..<to where i >= 0 && i < samples.count {
-                sum += samples[i]
-                count += 1
-            }
-            out[p] = count > 0 ? sum / Float(count) : 0
-        }
-        return out
+        return time
     }
 }
 
@@ -72,12 +66,10 @@ nonisolated struct AudioMessageAnalysis: Sendable {
     let peaks: [Float]
     /// Centre de gravité du spectre, 0 (grave) … 1 (aigu), en échelle logarithmique.
     let centroid: [Float]
-    /// Niveau lissé cumulé depuis le début (secondes × niveau) : particules sans état, révélation.
+    /// Niveau lissé cumulé depuis le début (secondes × niveau) : la couronne tourne à mesure que la voix avance.
     let cumulative: [Float]
     /// Attaques de syllabes.
     let onsets: [Onset]
-
-    var totalEnergy: Float { cumulative.last ?? 0 }
 
     /// Fréquence centrale de chaque bande (Hz).
     static var bandCenters: [Double] {

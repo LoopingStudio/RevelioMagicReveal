@@ -47,10 +47,8 @@ struct MessageStage: View {
 
     private func visualization(analysis: AudioMessageAnalysis, message: AudioMessage) -> some View {
         let kind = model.visualization
-        let spectrogram = model.spectrogram
         return TimelineView(.animation(paused: !model.isAnimating)) { _ in
-            let input = StageInput(analysis: analysis, message: message, time: model.playhead(),
-                                   photo: photo, spectrogram: spectrogram)
+            let input = StageInput(analysis: analysis, message: message, time: model.playhead(), photo: photo)
             Canvas(rendersAsynchronously: false) { context, size in
                 StageArt.draw(kind, in: &context, size: size, input: input)
             }

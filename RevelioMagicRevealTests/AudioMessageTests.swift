@@ -96,20 +96,25 @@ struct AudioMessageAnalysisTests {
         #expect(bars[5] < bars[25])
     }
 
-    @Test func spectrogramHasOneColumnPerFrame() throws {
-        let analysis = AudioMessageAnalysis.analyze(Voice.message(Voice.tone(500, seconds: 0.8)))
-        let image = try #require(SpectrogramImage.make(analysis))
-        #expect(image.width == analysis.frameCount)
-        #expect(image.height == AudioMessageAnalysis.bandCount)
+    @Test func scopeSamplesAverageAroundTheTime() {
+        let message = Voice.message(Voice.silence(0.5) + [Float](repeating: 0.6, count: 24_000))
+        #expect(message.average(at: 0.2, window: 0.001) == 0)
+        #expect(abs(message.average(at: 0.8, window: 0.001) - 0.6) < 1e-6)
+        // À cheval sur la marche : la moitié de la fenêtre dans le silence.
+        #expect(abs(message.average(at: 0.5, window: 0.002) - 0.3) < 0.02)
+        #expect(message.average(at: 2, window: 0.001) == 0)
     }
 
-    @Test func scopeIsCenteredOnTheGivenTime() {
-        let message = Voice.message(Voice.silence(0.5) + Voice.tone(200, seconds: 0.5, amplitude: 0.6))
-        let quiet = message.scope(at: 0.2, span: 0.04, points: 100)
-        let loud = message.scope(at: 0.8, span: 0.04, points: 100)
-        #expect(quiet.count == 100 && loud.count == 100)
-        #expect(quiet.allSatisfy { $0 == 0 })
-        #expect((loud.max() ?? 0) > 0.4)
+    @Test func scopeLocksOnARisingZeroCrossing() {
+        let sampleRate = 48_000.0
+        let message = Voice.message(Voice.tone(100, seconds: 0.5, amplitude: 0.5))
+        // Le sinus monte en passant par zéro toutes les 10 ms.
+        for time in [0.1234, 0.2051, 0.3399] {
+            let locked = message.risingZeroCrossing(before: time, within: 0.012)
+            #expect(locked <= time && time - locked < 0.0101)
+            let index = Int((locked * sampleRate).rounded())
+            #expect(message.samples[index - 1] < 0 && message.samples[index] >= 0)
+        }
     }
 }
 

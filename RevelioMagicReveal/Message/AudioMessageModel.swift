@@ -1,4 +1,3 @@
-import CoreGraphics
 import Foundation
 import Observation
 import QuartzCore
@@ -22,7 +21,7 @@ final class AudioMessageModel {
     }
 
     enum Visualization: String, CaseIterable, Identifiable, Sendable {
-        case halo, ring, equalizer, scope, scroll, spectrogram, orb, garland, particles, reveal
+        case halo, ring, scope, scroll, orb
 
         var id: Self { self }
 
@@ -30,14 +29,9 @@ final class AudioMessageModel {
             switch self {
             case .halo: "Halo"
             case .ring: "Couronne"
-            case .equalizer: "Égaliseur"
             case .scope: "Oscillo"
             case .scroll: "Défilante"
-            case .spectrogram: "Spectro"
             case .orb: "Orbe"
-            case .garland: "Guirlande"
-            case .particles: "Flocons"
-            case .reveal: "Révéler"
             }
         }
 
@@ -45,14 +39,9 @@ final class AudioMessageModel {
             switch self {
             case .halo: "circle.circle"
             case .ring: "rays"
-            case .equalizer: "chart.bar.fill"
             case .scope: "waveform.path"
             case .scroll: "waveform"
-            case .spectrogram: "square.grid.3x3.fill"
             case .orb: "drop.fill"
-            case .garland: "lightbulb.fill"
-            case .particles: "snowflake"
-            case .reveal: "photo"
             }
         }
     }
@@ -63,7 +52,6 @@ final class AudioMessageModel {
     private(set) var phase: Phase = .empty
     private(set) var message: AudioMessage?
     private(set) var analysis: AudioMessageAnalysis?
-    private(set) var spectrogram: CGImage?
     /// Barres de la forme d'onde du message entier (barre de lecture).
     private(set) var overview: [Float] = []
     /// Niveaux reçus pendant l'enregistrement, les plus récents à la fin.
@@ -240,7 +228,7 @@ final class AudioMessageModel {
         if recordingLevels.count > Self.liveBars * 2 { recordingLevels.removeFirst(Self.liveBars) }
     }
 
-    /// Analyse (hors fil principal), image du spectrogramme et script de vibrations, puis prêt à lire.
+    /// Analyse et script de vibrations (hors fil principal), puis prêt à lire.
     private func install(_ message: AudioMessage, autoplay: Bool) async {
         pause()
         phase = .preparing("Analyse du message…")
@@ -253,7 +241,6 @@ final class AudioMessageModel {
         self.analysis = analysis
         hapticScript = script
         overview = analysis.overview(bars: Self.overviewBars)
-        spectrogram = SpectrogramImage.make(analysis)
         position = 0
         player.load(message)
         phase = .ready

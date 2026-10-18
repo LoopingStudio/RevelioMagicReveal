@@ -60,6 +60,7 @@ struct GlassChip: View {
                 Text(title)
                     .font(.caption.weight(.semibold))
                     .lineLimit(1)
+                    .minimumScaleFactor(0.8)
             }
             .foregroundStyle(selected ? Palette.night : Palette.cream)
             .frame(maxWidth: .infinity, minHeight: 56)

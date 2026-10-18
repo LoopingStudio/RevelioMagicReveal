@@ -48,28 +48,16 @@ struct AudioMessageSheet: View {
     }
 
     private var visualizationPicker: some View {
-        ScrollViewReader { proxy in
-            ScrollView(.horizontal) {
-                GlassEffectContainer(spacing: 8) {
-                    HStack(spacing: 8) {
-                        ForEach(AudioMessageModel.Visualization.allCases) { kind in
-                            GlassChip(title: kind.title, symbol: kind.symbol, selected: kind == model.visualization) {
-                                model.visualization = kind
-                            }
-                            .frame(width: 82)
-                            .id(kind)
-                        }
+        GlassEffectContainer(spacing: 6) {
+            HStack(spacing: 6) {
+                ForEach(AudioMessageModel.Visualization.allCases) { kind in
+                    GlassChip(title: kind.title, symbol: kind.symbol, selected: kind == model.visualization) {
+                        model.visualization = kind
                     }
                 }
             }
-            .scrollIndicators(.hidden)
-            .contentMargins(.horizontal, 20, for: .scrollContent)
-            .scrollClipDisabled()
-            .onAppear { proxy.scrollTo(model.visualization, anchor: .center) }
-            .onChange(of: model.visualization) { _, kind in
-                withAnimation(.smooth) { proxy.scrollTo(kind, anchor: .center) }
-            }
         }
+        .padding(.horizontal, 16)
         .disabled(model.isRecording)
     }
 

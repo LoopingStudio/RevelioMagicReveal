@@ -1,7 +1,7 @@
 import Foundation
 
 /// Arguments de lancement pour vérifier un rendu sans geste réel, par exemple :
-/// `-RNMask snow -RNGesture scratch -RNDemo partial`, ou `-RNMessage orb` pour l'écran du message.
+/// `-RNMask snow -RNGesture scratch -RNDemo partial`, ou `-RNMessage halo` pour l'écran du message.
 struct LaunchOptions {
     var mask: MaskKind?
     var gesture: RevealGesture?

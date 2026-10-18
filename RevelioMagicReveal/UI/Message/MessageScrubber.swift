@@ -26,7 +26,8 @@ struct MessageScrubber: View {
                 let duration = model.duration
                 HStack(spacing: 12) {
                     GeometryReader { proxy in
-                        WaveformBars(bars: model.overview, progress: duration > 0 ? time / duration : 0)
+                        WaveformBars(bars: model.overview, progress: duration > 0 ? time / duration : 0,
+                                     grabbed: model.isScrubbing)
                             .contentShape(.rect)
                             .gesture(scrub(width: proxy.size.width, duration: duration))
                     }
@@ -39,6 +40,7 @@ struct MessageScrubber: View {
             }
         }
         .disabled(model.isRecording)
+        .sensoryFeedback(.impact(weight: .light), trigger: model.isScrubbing) { _, grabbed in grabbed }
     }
 
     private func scrub(width: CGFloat, duration: Double) -> some Gesture {
@@ -58,10 +60,12 @@ struct MessageScrubber: View {
     }
 }
 
-/// La forme d'onde d'un message en barres arrondies, la partie lue en or.
+/// La forme d'onde d'un message en barres arrondies. La partie lue se remplit d'or en continu (pas barre
+/// par barre), avec un curseur qui grossit quand on le tient.
 private struct WaveformBars: View {
     let bars: [Float]
     let progress: Double
+    let grabbed: Bool
 
     var body: some View {
         Canvas { context, size in
@@ -69,19 +73,23 @@ private struct WaveformBars: View {
             let slot = size.width / CGFloat(bars.count)
             let width = max(2, slot * 0.56)
             let corner = CGSize(width: width / 2, height: width / 2)
-            var played = Path(), rest = Path()
+            var shape = Path()
             for (i, value) in bars.enumerated() {
                 let height = 4 + CGFloat(value) * (size.height - 4)
-                let rect = CGRect(x: CGFloat(i) * slot + (slot - width) / 2, y: (size.height - height) / 2,
-                                  width: width, height: height)
-                if (Double(i) + 0.5) / Double(bars.count) <= progress {
-                    played.addRoundedRect(in: rect, cornerSize: corner)
-                } else {
-                    rest.addRoundedRect(in: rect, cornerSize: corner)
-                }
+                shape.addRoundedRect(in: CGRect(x: CGFloat(i) * slot + (slot - width) / 2, y: (size.height - height) / 2,
+                                                width: width, height: height), cornerSize: corner)
             }
-            context.fill(played, with: .color(Palette.gold))
-            context.fill(rest, with: .color(Palette.cream.opacity(0.35)))
+            context.fill(shape, with: .color(Palette.cream.opacity(0.32)))
+            let x = size.width * CGFloat(min(max(progress, 0), 1))
+            var played = context
+            played.clip(to: Path(CGRect(x: 0, y: 0, width: x, height: size.height)))
+            played.fill(shape, with: .color(Palette.gold))
+
+            let radius: CGFloat = grabbed ? 8 : 5.5
+            let knob = Path(ellipseIn: CGRect(x: x - radius, y: size.height / 2 - radius, width: 2 * radius, height: 2 * radius))
+            context.fill(knob, with: .color(Palette.cream))
+            context.stroke(knob, with: .color(Palette.gold), lineWidth: 1.5)
         }
+        .animation(.smooth(duration: 0.15), value: grabbed)
     }
 }
