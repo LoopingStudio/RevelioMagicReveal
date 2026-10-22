@@ -180,8 +180,8 @@ struct VoiceHapticsTests {
         let taps = events.filter { $0.kind == .transient }
         #expect(taps.count == 4)
         #expect(zip(taps.dropFirst(), taps).allSatisfy { $0.time - $1.time >= 0.08 })
-        #expect(taps.allSatisfy { $0.intensity <= 0.8 })
-        #expect(events.filter { $0.kind != .transient }.allSatisfy { $0.intensity <= 0.6 })
+        #expect(taps.allSatisfy { $0.intensity <= HapticScripts.voiceTapMax + 1e-6 })
+        #expect(events.filter { $0.kind != .transient }.allSatisfy { $0.intensity <= HapticScripts.voiceLayerMax })
         #expect(events.allSatisfy { $0.end <= analysis.duration + 0.05 })
     }
 
